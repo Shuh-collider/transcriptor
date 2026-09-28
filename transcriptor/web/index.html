@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Транскриптор</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%235b5bd6'/%3E%3Cpath d='M6 12h1M9 8.5v7M12 6v12M15 8.5v7M18 12h0' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <span>Транскриптор</span>
+    </div>
+    <button class="status" id="status" type="button" title="Состояние и настройка"></button>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <form id="new-form" class="card new" autocomplete="off">
+        <h2>Новая расшифровка</h2>
+        <textarea id="urls" rows="3" required
+          placeholder="Ссылки на видео, плейлисты или каналы YouTube — по одной в строке"></textarea>
+
+        <div class="opt-row">
+          <span class="opt-label">Язык видео</span>
+          <div class="seg" data-opt="language">
+            <button type="button" data-value="auto">Авто</button>
+            <button type="button" data-value="ru">Русский</button>
+            <button type="button" data-value="en">English</button>
+          </div>
+        </div>
+
+        <label class="toggle">
+          <input type="checkbox" data-opt="diarize">
+          <span class="track"></span>
+          <span>Кто говорит</span>
+          <input type="number" class="num" data-opt="num_speakers" min="1" max="20" placeholder="авто"
+            title="Сколько человек говорит в видео, если знаете точно">
+        </label>
+
+        <label class="toggle">
+          <input type="checkbox" data-opt="summarize">
+          <span class="track"></span>
+          <span>Пересказ и главы</span>
+        </label>
+        <div class="sub-opts" id="summary-opts">
+          <select data-opt="summary_model" id="model-select" aria-label="Модель Claude"></select>
+          <div class="seg small" data-opt="summary_language">
+            <button type="button" data-value="ru">на русском</button>
+            <button type="button" data-value="same">как в видео</button>
+          </div>
+        </div>
+
+        <details class="advanced">
+          <summary>Движок для русского</summary>
+          <div class="seg small" data-opt="ru_engine">
+            <button type="button" data-value="gigaam">GigaAM v3 · точнее</button>
+            <button type="button" data-value="qwen">Qwen3-ASR</button>
+          </div>
+        </details>
+
+        <button type="submit" class="primary" id="submit">Расшифровать</button>
+        <p class="form-error" id="form-error" hidden></p>
+      </form>
+
+      <section class="queue">
+        <div class="queue-head">
+          <h2>Очередь и история</h2>
+          <input type="search" id="filter" placeholder="Найти" aria-label="Найти в истории">
+        </div>
+        <div id="jobs" class="jobs"></div>
+      </section>
+    </aside>
+
+    <section class="viewer" id="viewer" aria-live="polite"></section>
+  </main>
+
+  <dialog id="picker" class="dialog wide">
+    <form method="dialog" class="dialog-body">
+      <header class="dialog-head">
+        <div>
+          <h2 id="picker-title"></h2>
+          <p class="muted" id="picker-sub"></p>
+        </div>
+        <button class="icon-btn" value="cancel" aria-label="Закрыть">✕</button>
+      </header>
+      <div class="picker-tools">
+        <button type="button" class="ghost" data-pick="all">Все</button>
+        <button type="button" class="ghost" data-pick="none">Ни одного</button>
+        <button type="button" class="ghost" data-pick="10">Первые 10</button>
+        <input type="search" id="picker-filter" placeholder="Фильтр по названию">
+      </div>
+      <ul class="picker-list" id="picker-list"></ul>
+      <footer class="dialog-foot">
+        <span class="muted" id="picker-total"></span>
+        <button class="ghost" value="cancel">Отмена</button>
+        <button class="primary" value="ok" id="picker-ok">Добавить</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="setup" class="dialog">
+    <form method="dialog" class="dialog-body">
+      <header class="dialog-head">
+        <h2>Состояние</h2>
+        <button class="icon-btn" value="cancel" aria-label="Закрыть">✕</button>
+      </header>
+      <div id="setup-body"></div>
+      <footer class="dialog-foot">
+        <button type="button" class="ghost" id="setup-refresh">Проверить снова</button>
+        <button class="primary" value="ok">Готово</button>
+      </footer>
+    </form>
+  </dialog>
+</body>
+</html>
