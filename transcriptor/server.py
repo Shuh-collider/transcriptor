@@ -21,7 +21,7 @@ from . import __version__, config, library
 from .export import description_links, to_markdown, to_txt
 from .jobs import JobManager
 from .mcp_server import mcp
-from .pipeline import load_doc, refresh_video_meta, save_doc, video_dir
+from .pipeline import load_doc, merge_same_name_speakers, refresh_video_meta, save_doc, video_dir
 from .youtube import DownloadError, expand
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -222,8 +222,9 @@ def rename_speakers(video_id: str, body: SpeakersIn) -> dict:
     for label, name in body.names.items():
         if label in doc["speakers"]:
             doc["speakers"][label]["name"] = name.strip()[:80]
+    merged = merge_same_name_speakers(doc)  # одно и то же имя у двух меток — это один человек
     save_doc(doc)
-    return doc["speakers"]
+    return {"speakers": doc["speakers"], "merged": merged}
 
 
 def _filename(doc: dict, ext: str) -> str:

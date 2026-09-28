@@ -260,6 +260,47 @@ def transcribe_video(
     return doc
 
 
+def _label_order(label: str) -> int:
+    return int(label[1:]) if label[1:].isdigit() else 10_000
+
+
+def merge_same_name_speakers(doc: dict) -> list[list[str]]:
+    """Объединяет спикеров с одинаковым именем: обычно это один человек, которого диаризация
+    разбила на двоих (например, его вопросы записаны отдельно, в другой акустике).
+
+    Реплики переходят к первой метке; исходная метка остаётся в orig_speaker, чтобы объединение
+    можно было отменить. Возвращает пары [откуда, куда].
+    """
+    speakers = doc.get("speakers") or {}
+    first: dict[str, str] = {}
+    merges: list[list[str]] = []
+    for label in sorted(speakers, key=_label_order):
+        name = " ".join((speakers[label].get("name") or "").split()).casefold()
+        if not name:
+            continue
+        if name in first:
+            merges.append([label, first[name]])
+        else:
+            first[name] = label
+    if not merges:
+        return []
+    into = dict(merges)
+    for seg in doc.get("segments") or []:
+        target = into.get(seg.get("speaker"))
+        if target:
+            seg.setdefault("orig_speaker", seg["speaker"])
+            seg["speaker"] = target
+    summary_speakers = (doc.get("summary") or {}).get("speakers") or {}
+    for src, dst in merges:
+        info = speakers.pop(src)
+        speakers[dst]["seconds"] = round(speakers[dst].get("seconds", 0) + info.get("seconds", 0), 1)
+        if not speakers[dst].get("role") and info.get("role"):
+            speakers[dst]["role"] = info["role"]
+        summary_speakers.pop(src, None)
+    doc.setdefault("speaker_merges", []).extend({"from": src, "into": dst} for src, dst in merges)
+    return merges
+
+
 def refresh_video_meta(video_id: str) -> dict:
     """Заново берёт с YouTube дату, просмотры и лайки (без скачивания звука) и дописывает в документ."""
     doc = load_doc(video_id)
@@ -290,5 +331,6 @@ def summarize_video(video_id: str, model: str, language: str, progress: Callable
             doc["speakers"][label]["name"] = info["name"]
         if label in doc["speakers"]:
             doc["speakers"][label]["role"] = info.get("role", "")
+    merge_same_name_speakers(doc)
     save_doc(doc)
     return doc

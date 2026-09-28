@@ -594,9 +594,13 @@ async def transcriptor_rename_speakers(
     video_id: VideoId,
     names: Annotated[dict[str, str], Field(description="Speaker label → name, e.g. {'S1': 'Anna', 'S2': 'Host'}; empty name resets")],
 ) -> str:
-    """Give speakers of a video human names. The names appear in transcripts, summaries, search and exports."""
-    speakers = await _api("PATCH", f"/api/videos/{video_id}/speakers", json={"names": names})
-    return "Speakers now: " + ", ".join(f"{k} = {v.get('name') or '(unnamed)'}" for k, v in speakers.items())
+    """Give speakers of a video human names. The names appear in transcripts, summaries, search and exports.
+    Giving two labels the same name merges them into one speaker (the earlier label is kept)."""
+    res = await _api("PATCH", f"/api/videos/{video_id}/speakers", json={"names": names})
+    text = "Speakers now: " + ", ".join(f"{k} = {v.get('name') or '(unnamed)'}" for k, v in res["speakers"].items())
+    if res.get("merged"):
+        text += "\nMerged (same name): " + ", ".join(f"{src} → {dst}" for src, dst in res["merged"])
+    return text
 
 
 def main() -> int:

@@ -240,7 +240,13 @@ function renderSide() {
           ${info.role ? `<div class="role">${esc(info.role)}</div>` : ""}
         </div>`,
       )
-      .join("")}</div></div>`;
+      .join("")}</div>${
+      doc.speaker_merges?.length
+        ? `<p class="muted" style="margin:8px 0 0;font-size:12.5px">Объединены (одинаковое имя): ${esc(
+            doc.speaker_merges.map((m) => `${m.from} → ${m.into}`).join(", "),
+          )}</p>`
+        : ""
+    }</div>`;
   }
   const chapters = doc.summary?.chapters || [];
   if (chapters.length) {
@@ -533,10 +539,16 @@ root().addEventListener("change", async (e) => {
   const label = e.target.dataset?.label;
   if (!label || !cur?.doc) return;
   try {
-    cur.doc.speakers = await api(`/api/videos/${cur.doc.video.id}/speakers`, {
+    const res = await api(`/api/videos/${cur.doc.video.id}/speakers`, {
       method: "PATCH",
       body: { names: { [label]: e.target.value } },
     });
+    if (res.merged?.length) {
+      await refreshDoc(); // реплики перешли к другой метке — перечитываем расшифровку целиком
+      toast(`Объединено: ${res.merged.map(([from, into]) => `${from} → ${into}`).join(", ")} — одинаковое имя`);
+      return;
+    }
+    cur.doc.speakers = res.speakers;
     if (cur.tab === "text") renderText();
     toast("Имя сохранено");
   } catch (err) {
