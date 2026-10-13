@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+import socket
+import threading
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -62,6 +65,33 @@ class _Logger:
         log.warning("yt-dlp: %s", msg)
 
 
+_IPV6_CHECK_TTL = 600  # сеть может смениться, поэтому проверка раз в 10 минут
+_IPV6_TIMEOUT = 3.0
+_ipv6_checked: tuple[float, bool] | None = None
+_ipv6_lock = threading.Lock()
+
+
+def _ipv6_works() -> bool:
+    """Открывается ли соединение с YouTube по IPv6. Результат помним на _IPV6_CHECK_TTL секунд."""
+    global _ipv6_checked
+    with _ipv6_lock:
+        if _ipv6_checked and time.monotonic() - _ipv6_checked[0] < _IPV6_CHECK_TTL:
+            return _ipv6_checked[1]
+        try:
+            addrs = {a[4] for a in socket.getaddrinfo("www.youtube.com", 443, socket.AF_INET6, socket.SOCK_STREAM)}
+            for addr in addrs:
+                with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
+                    sock.settimeout(_IPV6_TIMEOUT)
+                    sock.connect(addr)
+            ok = bool(addrs)
+        except OSError:
+            ok = False
+        if not ok and (_ipv6_checked is None or _ipv6_checked[1]):
+            log.info("YouTube не отвечает по IPv6, скачиваю через IPv4")
+        _ipv6_checked = (time.monotonic(), ok)
+        return ok
+
+
 def _base_opts() -> dict:
     opts = {
         "quiet": True,
@@ -73,6 +103,10 @@ def _base_opts() -> dict:
         "fragment_retries": 5,
         "socket_timeout": 30,
     }
+    # Если IPv6 до YouTube не работает, каждый запрос yt-dlp сначала висит до таймаута
+    # и только потом уходит на IPv4: получение данных о видео растягивается с секунд до минут.
+    if not _ipv6_works():
+        opts["source_address"] = "0.0.0.0"
     browser = config.cookies_from_browser()
     if browser:
         opts["cookiesfrombrowser"] = (browser,)
