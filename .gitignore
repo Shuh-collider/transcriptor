@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 .env
 data/
+
+# личные настройки этого компьютера и инструкции для Claude
+CLAUDE.md
+.mcp.json
+.claude/
