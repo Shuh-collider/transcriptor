@@ -3,6 +3,7 @@ name = "transcriptor"
 version = "0.1.0"
 description = "Локальный транскриптор YouTube: GigaAM v3 / Qwen3-ASR + pyannote + Claude"
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = "==3.11.*"
 dependencies = [
     # PyTorch с CUDA. Связка 2.10 / torchcodec 0.10 / pyannote 4.0 проверена авторами GigaAM

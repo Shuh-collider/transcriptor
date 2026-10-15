@@ -61,20 +61,26 @@
 | `transcriptor_list_jobs`, `transcriptor_cancel_job`, `transcriptor_retry_job` | Очередь |
 | `transcriptor_get_status` | Видеокарта, ключи, доступные модели пересказа |
 
+В примерах ниже `C:\\transcriptor` — замените на путь к папке проекта.
+
 **Claude Desktop:** «Настройки → Разработчик → Изменить конфигурацию», добавьте в `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "transcriptor": {
-      "command": "C:\\Users\\Shuhrat 01\\Desktop\\транскриптор\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\Users\\Shuhrat 01\\Desktop\\транскриптор\\transcriptor_mcp.py"]
+      "command": "C:\\transcriptor\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\transcriptor\\transcriptor_mcp.py"]
     }
   }
 }
 ```
 
-**Claude Code:** в этой папке уже лежит `.mcp.json` — при запуске Claude Code спросит, подключить ли сервер.
+**Claude Code:**
+
+```bash
+claude mcp add transcriptor -- "C:\transcriptor\.venv\Scripts\python.exe" "C:\transcriptor\transcriptor_mcp.py"
+```
 
 **Клиенты с поддержкой HTTP** (Cursor и другие): пока запущен `start.bat`, MCP доступен по адресу `http://127.0.0.1:8000/mcp`.
 
@@ -100,11 +106,18 @@
 
 ## Установка с нуля
 
-Нужны Python 3.11 и видеокарта NVIDIA (на процессоре тоже работает, но медленно).
+Нужны Windows, Python 3.11 и видеокарта NVIDIA (на процессоре тоже работает, но медленно).
 
 ```bash
+git clone https://github.com/Shuh-collider/transcriptor
+cd transcriptor
 python -m pip install --user uv
 uv sync
+copy .env.example .env
 ```
 
-`uv sync` поставит PyTorch с CUDA 12.8 и все зависимости (около 5 ГБ). Модели распознавания (~7 ГБ) скачаются при первой расшифровке.
+`uv sync` поставит PyTorch с CUDA 12.8 и все зависимости (около 5 ГБ). Модели распознавания (~7 ГБ) скачаются при первой расшифровке. Ключи впишите в `.env` (см. «Ключи» выше).
+
+## Лицензия
+
+Код — [Apache 2.0](LICENSE). Модели (GigaAM, Qwen3-ASR, pyannote, Silero VAD) скачиваются с их страниц и распространяются под собственными лицензиями.
