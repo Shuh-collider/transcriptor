@@ -11,6 +11,7 @@ const DEFAULTS = {
   summary_model: null,
   summary_language: "ru",
   ru_engine: "gigaam",
+  screen_text: false,
 };
 
 function loadOpts() {

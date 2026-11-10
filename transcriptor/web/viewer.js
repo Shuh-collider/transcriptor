@@ -113,6 +113,7 @@ const STEPS = [
   ["language", "Определение языка"],
   ["asr", "Распознавание речи"],
   ["diarize", "Кто говорит"],
+  ["screen", "Надписи на экране"],
   ["summary", "Пересказ и главы"],
 ];
 
@@ -130,7 +131,11 @@ function progressBody(j) {
   }
   const o = j.options || {};
   const steps = STEPS.filter(
-    ([k]) => (k !== "language" || o.language === "auto") && (k !== "diarize" || o.diarize) && (k !== "summary" || o.summarize),
+    ([k]) =>
+      (k !== "language" || o.language === "auto") &&
+      (k !== "diarize" || o.diarize) &&
+      (k !== "screen" || o.screen_text) &&
+      (k !== "summary" || o.summarize),
   );
   const idx = steps.findIndex(([k]) => k === j.stage);
   const pct = Math.round((j.progress || 0) * 100);
@@ -339,13 +344,29 @@ function highlight(text, q) {
   return out + esc(text.slice(i));
 }
 
+/** Речь и надписи на экране по времени. У реплик i — номер в segments (для подсветки), у надписей screen. */
+function timeline() {
+  const items = cur.doc.segments.map((s, i) => ({ ...s, i }));
+  for (const s of cur.doc.screen || []) items.push({ ...s, screen: true });
+  return items.sort((a, b) => a.start - b.start || !!a.screen - !!b.screen);
+}
+
 function renderText() {
   const q = norm(cur.query.trim());
   const H = hours();
   const rows = [];
   let prev = null;
-  cur.doc.segments.forEach((s, i) => {
+  timeline().forEach((s) => {
     if (q && !norm(s.text).includes(q)) return;
+    if (s.screen) {
+      prev = null; // после надписи снова показываем, кто говорит
+      rows.push(`<div class="seg-row screen-row">
+        <button class="ts" data-t="${s.start}" title="Перейти к моменту">${fmtTs(s.start, H)}</button>
+        <div><span class="who screen-label">На экране</span><span class="text">${highlight(s.text, q)}</span></div>
+      </div>`);
+      return;
+    }
+    const i = s.i;
     const who = s.speaker && (q || s.speaker !== prev)
       ? `<span class="who" style="--h:${hue(s.speaker)}">${esc(speakerName(s.speaker))}</span><br>`
       : "";
@@ -357,7 +378,7 @@ function renderText() {
   });
   $("#tab-body").innerHTML = rows.length
     ? `<div class="transcript">${rows.join("")}</div>`
-    : `<p class="muted">${q ? "Ничего не найдено." : "В видео не найдено речи."}</p>`;
+    : `<p class="muted">${q ? "Ничего не найдено." : "В видео не найдено ни речи, ни надписей."}</p>`;
   const count = $("#count");
   if (count) count.textContent = q ? `${rows.length} ${plural(rows.length, ["реплика", "реплики", "реплик"])}` : "";
   cur.nowIdx = -1;
@@ -494,8 +515,12 @@ function tick() {
 
 function plainText() {
   const H = hours();
-  return cur.doc.segments
-    .map((s) => `[${fmtTs(s.start, H)}]${s.speaker ? ` ${speakerName(s.speaker)}:` : ""} ${s.text}`)
+  return timeline()
+    .map((s) =>
+      s.screen
+        ? `[${fmtTs(s.start, H)}] [на экране]\n${s.text}`
+        : `[${fmtTs(s.start, H)}]${s.speaker ? ` ${speakerName(s.speaker)}:` : ""} ${s.text}`,
+    )
     .join("\n\n");
 }
 

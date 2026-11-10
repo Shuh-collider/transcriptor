@@ -82,6 +82,7 @@ def run_cli(args: argparse.Namespace) -> int:
             "summarize": not args.no_summary,
             "summary_model": args.model,
             "summary_language": args.summary_lang,
+            "screen_text": args.screen,
         }
     )
     models = Models()
@@ -110,7 +111,9 @@ def run_cli(args: argparse.Namespace) -> int:
                   f"язык {doc['language']}, {doc['engine']}" + " " * 10)
             for note in doc["notes"]:
                 print(f"  ! {note}")
-            if options.summarize and doc["segments"]:
+            if doc.get("screen"):
+                print(f"  Надписей на экране: {len(doc['screen'])}")
+            if options.summarize and (doc["segments"] or doc.get("screen")):
                 try:
                     doc = summarize_video(v.id, options.summary_model, options.summary_language,
                                           lambda msg: print(f"\r  {msg:<60}", end="", flush=True))
@@ -143,6 +146,7 @@ def main() -> int:
     p_run.add_argument("--no-summary", action="store_true", help="без пересказа")
     p_run.add_argument("--model", default=config.default_summary_model(), choices=list(config.SUMMARY_MODELS))
     p_run.add_argument("--summary-lang", default="ru", choices=["ru", "en", "same"])
+    p_run.add_argument("--screen", action="store_true", help="читать надписи на экране (через Gemini)")
 
     sub.add_parser("mcp", help="MCP-сервер для LLM через stdio (Claude Desktop, Claude Code, Cursor…)")
 

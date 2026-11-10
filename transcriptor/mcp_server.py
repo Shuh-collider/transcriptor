@@ -26,7 +26,7 @@ from mcp_types import ToolAnnotations
 from pydantic import Field
 
 from . import __version__, config
-from .export import fmt_ts, parse_ts
+from .export import fmt_ts, parse_ts, timeline
 
 log = logging.getLogger(__name__)
 
@@ -244,6 +244,7 @@ async def transcriptor_transcribe(
     summarize: Annotated[bool, Field(description="Also write a summary with chapters")] = True,
     summary_model: Annotated[str | None, Field(description="Summary model id from transcriptor_get_status; default if omitted")] = None,
     summary_language: Annotated[Literal["ru", "en", "same"], Field(description="Summary language; 'same' = language of the video")] = "ru",
+    screen_text: Annotated[bool, Field(description="Also read text shown on screen (slides, captions, interfaces) with Gemini; useful for videos with little speech. Slower, needs GEMINI_API_KEY")] = False,
     max_videos_per_link: Annotated[int, Field(ge=1, le=50, description="For playlists/channels: how many videos to queue")] = 5,
     skip_existing: Annotated[bool, Field(description="Skip videos that already have a transcript")] = True,
 ) -> str:
@@ -257,6 +258,7 @@ async def transcriptor_transcribe(
         "summarize": summarize,
         "summary_model": summary_model,
         "summary_language": summary_language,
+        "screen_text": screen_text,
     }
     queued: list[dict] = []
     skipped: list[str] = []
@@ -468,16 +470,18 @@ async def transcriptor_get_transcript(
     response_format: Format = "markdown",
 ) -> str:
     """Read the transcript of a video as timestamped lines '[m:ss] Speaker: text', optionally only a time range
-    or one speaker. Long transcripts are returned in pages: follow next_offset until has_more is false.
+    or one speaker. If on-screen text was read, it appears as '[m:ss] On screen: text' lines between the speech.
+    Long transcripts are returned in pages: follow next_offset until has_more is false.
     For an overview prefer transcriptor_get_summary; to find a topic use transcriptor_search."""
     doc = await _api("GET", f"/api/videos/{video_id}")
     video = doc["video"]
     t0, t1 = _parse_time(start), _parse_time(end)
     wanted = (speaker or "").strip().lower()
     segments = [
-        s for s in doc["segments"]
+        s for s in timeline(doc)
         if (t0 is None or s["end"] >= t0) and (t1 is None or s["start"] <= t1)
-        and (not wanted or wanted == (s.get("speaker") or "").lower() or wanted in _speaker(doc, s.get("speaker")).lower())
+        and (not wanted or (not s.get("screen") and (
+            wanted == (s.get("speaker") or "").lower() or wanted in _speaker(doc, s.get("speaker")).lower())))
     ]
     page, used = [], 0
     for seg in segments[offset:]:
@@ -495,6 +499,7 @@ async def transcriptor_get_transcript(
                 "total_segments": len(segments), "offset": offset, "has_more": more,
                 "next_offset": next_offset if more else None,
                 "segments": [
+                    {"start": s["start"], "end": s["end"], "on_screen": True, "text": s["text"]} if s.get("screen") else
                     {"start": s["start"], "end": s["end"], "speaker": s.get("speaker"),
                      "speaker_name": _speaker(doc, s.get("speaker")), "text": s["text"]}
                     for s in page
@@ -510,6 +515,9 @@ async def transcriptor_get_transcript(
     ]
     body = []
     for s in page:
+        if s.get("screen"):
+            body.append(f"[{fmt_ts(s['start'], hours)}] On screen: " + " / ".join(s["text"].splitlines()))
+            continue
         who = f" {_speaker(doc, s.get('speaker'))}:" if s.get("speaker") else ""
         body.append(f"[{fmt_ts(s['start'], hours)}]{who} {s['text']}")
     footer = [f"", f"has_more: true — call again with offset={next_offset}"] if more else []

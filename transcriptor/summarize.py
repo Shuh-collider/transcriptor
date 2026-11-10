@@ -10,7 +10,7 @@ from typing import Callable
 from pydantic import BaseModel, ValidationError
 
 from . import config
-from .export import fmt_ts, parse_ts
+from .export import fmt_ts, parse_ts, timeline
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ SCHEMA = _object(
 
 SYSTEM = """You turn transcripts of YouTube videos into a faithful summary with chapters.
 
-The transcript comes from automatic speech recognition, so expect occasional misheard words, especially names and terms. Use the title, description and context to interpret them, but never add facts that are not in the video. Speaker labels (S1, S2, …) come from automatic diarization and can be wrong near turn boundaries.
+The transcript comes from automatic speech recognition, so expect occasional misheard words, especially names and terms. Use the title, description and context to interpret them, but never add facts that are not in the video. Speaker labels (S1, S2, …) come from automatic diarization and can be wrong near turn boundaries. Lines marked [ON SCREEN] are not speech: they are text shown in the video (slides, captions, interfaces), read from frames, with " / " between lines; use them as part of the content, especially when the video has little speech.
 
 Write every text field in {language}.
 
@@ -76,7 +76,10 @@ Write every text field in {language}.
 def render_transcript(doc: dict) -> str:
     hours = (doc.get("video") or {}).get("duration", 0) >= 3600
     lines = []
-    for seg in doc.get("segments") or []:
+    for seg in timeline(doc):
+        if seg.get("screen"):
+            lines.append(f"[{fmt_ts(seg['start'], hours)}] [ON SCREEN] " + " / ".join(seg["text"].splitlines()))
+            continue
         who = f" {seg['speaker']}:" if seg.get("speaker") else ""
         lines.append(f"[{fmt_ts(seg['start'], hours)}]{who} {seg['text']}")
     return "\n".join(lines)
@@ -103,7 +106,7 @@ def _video_block(doc: dict) -> str:
 
 def _snap_chapters(chapters: list[Chapter], doc: dict) -> list[dict]:
     """Переводит время глав в секунды и притягивает к началу ближайшей реплики."""
-    starts = sorted({seg["start"] for seg in doc.get("segments") or []})
+    starts = sorted({seg["start"] for seg in timeline(doc)})
     duration = (doc.get("video") or {}).get("duration") or (starts[-1] if starts else 0)
     result: list[dict] = []
     for ch in chapters:
@@ -122,8 +125,8 @@ def _snap_chapters(chapters: list[Chapter], doc: dict) -> list[dict]:
 
 def summarize(doc: dict, model: str, language: str, progress: Say | None = None) -> dict:
     """language: код языка ответа (ru / en). Если для выбранной модели нет ключа, берётся доступная."""
-    if not doc.get("segments"):
-        raise SummaryError("Нечего пересказывать: в видео не найдено речи.")
+    if not doc.get("segments") and not doc.get("screen"):
+        raise SummaryError("Нечего пересказывать: в видео не найдено ни речи, ни надписей.")
     config.reload_env()
     model = config.resolve_summary_model(model)
     provider = config.SUMMARY_MODELS[model]["provider"]
@@ -133,7 +136,7 @@ def summarize(doc: dict, model: str, language: str, progress: Say | None = None)
     say = progress or (lambda _msg: None)
     system = SYSTEM.format(language=LANGUAGE_NAMES.get(language, "Russian"))
     user = f"<video>\n{_video_block(doc)}\n</video>\n\n<transcript>\n{render_transcript(doc)}\n</transcript>"
-    call = _call_gemini if provider == "gemini" else _call_claude
+    call = call_gemini if provider == "gemini" else _call_claude
     text, used_model, usage, cost = call(system, user, model, say)
 
     text = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", text)  # на случай, если модель обернёт JSON в ```
@@ -194,7 +197,17 @@ def _gemini_error(exc: Exception, model: str) -> tuple[bool, str]:
     return False, f"Ошибка Gemini API ({code}): {text[:300]}"
 
 
-def _call_gemini(system: str, user: str, model: str, say: Say) -> tuple[str, str, dict, float | None]:
+def call_gemini(
+    system: str,
+    user: str | list[dict],
+    model: str,
+    say: Say,
+    schema: dict = SCHEMA,
+    thinking: str = "medium",
+    reading: str = "Gemini читает расшифровку…",
+    writing: str = "Gemini пишет пересказ…",
+) -> tuple[str, str, dict, float | None]:
+    """Запрос к Gemini с ответом в JSON по схеме. user — текст или список блоков (текст и картинки)."""
     import httpx
     from google import genai
     from google.genai import errors as genai_errors
@@ -207,7 +220,7 @@ def _call_gemini(system: str, user: str, model: str, say: Say) -> tuple[str, str
         if delay:
             say(f"Gemini занят, повторяю через {delay} с…")
             time.sleep(delay)
-        say("Gemini читает расшифровку…")
+        say(reading)
         parts: list[str] = []
         usage = None
         status = None
@@ -218,8 +231,8 @@ def _call_gemini(system: str, user: str, model: str, say: Say) -> tuple[str, str
                 system_instruction=system,
                 # новый формат: тип и схема внутри response_format; отдельный response_mime_type
                 # относится к старому формату, и вместе с ним сервер отвечает 400
-                response_format={"type": "text", "mime_type": "application/json", "schema": _gemini_schema(SCHEMA)},
-                generation_config={"thinking_level": "medium", "max_output_tokens": 32000},
+                response_format={"type": "text", "mime_type": "application/json", "schema": _gemini_schema(schema)},
+                generation_config={"thinking_level": thinking, "max_output_tokens": 32000},
                 store=False,  # не хранить запрос и ответ на стороне Google
                 stream=True,
                 timeout=600,
@@ -230,7 +243,7 @@ def _call_gemini(system: str, user: str, model: str, say: Say) -> tuple[str, str
                 if kind == "step.delta" and getattr(event.delta, "type", "") == "text":
                     parts.append(event.delta.text)
                     written += len(event.delta.text)
-                    say(f"Gemini пишет пересказ… {written} симв.")
+                    say(f"{writing} {written} симв.")
                 elif kind == "interaction.completed":
                     usage = getattr(event.interaction, "usage", None)
                     status = getattr(event.interaction, "status", None)

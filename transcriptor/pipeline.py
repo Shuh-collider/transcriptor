@@ -8,6 +8,7 @@ import logging
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,7 @@ from .diarize import TITLE as DIARIZATION_TITLE
 from .diarize import DiarizationUnavailable, Diarizer
 from .media import SAMPLE_RATE, load_audio
 from .merge import build_segments, speaker_stats
+from .screen import ScreenCancelled, ScreenError, read_screen
 from .summarize import summarize
 from .vad import speech_chunks
 from .youtube import download_audio, fetch_meta
@@ -30,7 +32,7 @@ log = logging.getLogger(__name__)
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{6,20}$")
 
 # Доли общего прогресса по этапам (для одной полосы в интерфейсе)
-STAGES = {"download": 0.08, "prepare": 0.07, "language": 0.03, "asr": 0.52, "diarize": 0.30}
+STAGES = {"download": 0.08, "prepare": 0.07, "language": 0.03, "asr": 0.50, "diarize": 0.27, "screen": 0.05}
 
 
 class Cancelled(Exception):
@@ -46,6 +48,7 @@ class Options:
     summarize: bool = True
     summary_model: str = field(default_factory=config.default_summary_model)
     summary_language: str = "ru"  # ru | en | same
+    screen_text: bool = False  # читать надписи на экране (через Gemini)
 
     @classmethod
     def from_dict(cls, data: dict | None) -> "Options":
@@ -177,6 +180,20 @@ def transcribe_video(
     audio_path, meta = download_audio(url, video_dir(video_id), stage("download", "Скачиваю звук с YouTube"))
     timings["download"] = round(time.time() - t, 1)
 
+    # Надписи читаются в отдельном потоке, пока видеокарта распознаёт речь: там в основном
+    # ожидание YouTube и Gemini.
+    screen_task = None
+    screen_state = {"frac": 0.0, "message": "Читаю надписи на экране"}
+    if options.screen_text:
+        t_screen = time.time()
+        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="screen")
+        screen_task = pool.submit(
+            read_screen, url, video_dir(video_id),
+            lambda frac, message: screen_state.update(frac=frac, message=message),
+            cancelled, (meta.get("duration") or 0) >= 3600,
+        )
+        pool.shutdown(wait=False)
+
     t = time.time()
     update = stage("prepare", "Ищу фрагменты речи")
     audio = load_audio(audio_path)
@@ -228,6 +245,24 @@ def transcribe_video(
     _free_gpu_cache()
     if not segments:
         notes.append("В видео не найдено речи.")
+
+    screen = None
+    if screen_task:
+        while not screen_task.done():
+            if cancelled():
+                raise Cancelled()
+            report("screen", max(0.0, min(1.0, screen_state["frac"])), screen_state["message"])
+            time.sleep(0.5)
+        try:
+            screen = screen_task.result()
+        except ScreenCancelled:
+            raise Cancelled() from None
+        except ScreenError as exc:
+            notes.append(str(exc))
+        except Exception as exc:  # noqa: BLE001 — без надписей расшифровка всё равно полезна
+            log.exception("screen text failed")
+            notes.append(f"Надписи на экране не прочитаны: {type(exc).__name__}: {exc}")
+        timings["screen"] = round(time.time() - t_screen, 1)
     stats = speaker_stats(segments)
     old = load_doc(video_id) or {}
     old_names = {k: v.get("name", "") for k, v in (old.get("speakers") or {}).items()}
@@ -251,6 +286,8 @@ def transcribe_video(
             }
             for s in segments
         ],
+        # надписи на экране: [{start, text}]; None — их не просили читать
+        "screen": [{"start": round(s["start"], 2), "text": s["text"]} for s in screen] if screen is not None else None,
         "summary": None,
         "summary_error": None,
         "notes": notes,

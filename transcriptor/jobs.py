@@ -286,7 +286,7 @@ class JobManager:
             notes=doc.get("notes") or [],
             progress=1.0,
         )
-        if options.summarize and doc["segments"]:
+        if options.summarize and (doc["segments"] or doc.get("screen")):
             self._update(job_id, status="summarizing", stage="summary", message="Готовлю пересказ…", **values)
             self._summary_pool.submit(self._summarize, job_id, None, None)
         else:

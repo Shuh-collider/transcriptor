@@ -107,6 +107,13 @@ def speaker_name(doc: dict, label: str | None) -> str:
     return info.get("name") or f"Спикер {label.lstrip('S')}"
 
 
+def timeline(doc: dict) -> list[dict]:
+    """Речь и надписи на экране одним списком по времени; у надписей screen=True."""
+    items = list(doc.get("segments") or [])
+    items += [{"start": s["start"], "end": s["start"], "text": s["text"], "screen": True} for s in doc.get("screen") or []]
+    return sorted(items, key=lambda x: (x["start"], bool(x.get("screen"))))
+
+
 def _long(doc: dict) -> bool:
     return (doc.get("video") or {}).get("duration", 0) >= 3600
 
@@ -130,9 +137,9 @@ def to_txt(doc: dict) -> str:
         lines += ["ССЫЛКИ ИЗ ОПИСАНИЯ"] + [f"• {l['label']}: {l['url']}" if l["label"] else f"• {l['url']}" for l in links] + [""]
     if summary or links:
         lines += ["РАСШИФРОВКА", ""]
-    for seg in doc.get("segments") or []:
-        who = speaker_name(doc, seg.get("speaker"))
-        head = f"[{fmt_ts(seg['start'], hours)}]" + (f" {who}:" if who else "")
+    for seg in timeline(doc):
+        who = "[на экране]" if seg.get("screen") else speaker_name(doc, seg.get("speaker"))
+        head = f"[{fmt_ts(seg['start'], hours)}]" + (f" {who}" if seg.get("screen") else f" {who}:" if who else "")
         lines += [f"{head} {seg['text']}", ""]
     return "\n".join(lines).strip() + "\n"
 
@@ -160,7 +167,11 @@ def to_markdown(doc: dict) -> str:
         out += ["## Ссылки из описания", ""]
         out += [f"- [{l['label'] or l['url']}]({l['url']})" for l in links] + [""]
     out += ["## Расшифровка", ""]
-    for seg in doc.get("segments") or []:
+    for seg in timeline(doc):
+        if seg.get("screen"):
+            quoted = "\n".join(f"> {line}" if line.strip() else ">" for line in seg["text"].splitlines())
+            out += [f"**[{fmt_ts(seg['start'], hours)}] На экране:**", "", quoted, ""]
+            continue
         who = speaker_name(doc, seg.get("speaker"))
         head = f"**[{fmt_ts(seg['start'], hours)}]" + (f" {who}:**" if who else "**")
         out += [f"{head} {seg['text']}", ""]

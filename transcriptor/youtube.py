@@ -211,6 +211,28 @@ def download_audio(url: str, dest: Path, progress: Callable[[float], None] | Non
     if cached and meta_file.exists():
         return cached[0], json.loads(meta_file.read_text(encoding="utf-8"))
 
+    path, info = _download(url, dest, "audio", "bestaudio/best", progress)
+    meta = _meta(info, url)
+    meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    return path, meta
+
+
+# Видео без звука, не выше 720p: мелкий текст ещё читается, а файл в разы меньше, чем в 1080p.
+VIDEO_FORMAT = "bv*[height<=720][vcodec^=avc1]/bv*[height<=720]/bv*/b"
+
+
+def download_video(url: str, dest: Path, progress: Callable[[float], None] | None = None) -> Path:
+    """Скачивает картинку видео (без звука) в dest/video.* — для чтения надписей на экране."""
+    dest.mkdir(parents=True, exist_ok=True)
+    cached = [p for p in dest.glob("video.*") if p.suffix not in (".part", ".ytdl", ".json")]
+    if cached:
+        return cached[0]
+    return _download(url, dest, "video", VIDEO_FORMAT, progress)[0]
+
+
+def _download(
+    url: str, dest: Path, stem: str, fmt: str, progress: Callable[[float], None] | None
+) -> tuple[Path, dict]:
     def hook(d: dict) -> None:
         if progress and d.get("status") == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate")
@@ -218,8 +240,8 @@ def download_audio(url: str, dest: Path, progress: Callable[[float], None] | Non
                 progress(min(1.0, d.get("downloaded_bytes", 0) / total))
 
     opts = _base_opts() | {
-        "format": "bestaudio/best",
-        "outtmpl": str(dest / "audio.%(ext)s"),
+        "format": fmt,
+        "outtmpl": str(dest / f"{stem}.%(ext)s"),
         "noplaylist": True,
         "progress_hooks": [hook],
     }
@@ -236,19 +258,17 @@ def download_audio(url: str, dest: Path, progress: Callable[[float], None] | Non
             if "403" not in str(exc) or i == len(attempts) - 1:
                 raise DownloadError(friendly_error(exc)) from exc
             log.warning("YouTube ответил 403, повторяю загрузку через IPv4")
-            for part in dest.glob("audio.*"):
-                part.unlink(missing_ok=True)
+            for part in dest.glob(f"{stem}.*"):
+                if part.suffix != ".json":  # video.json — метаданные, а не недокачанный файл
+                    part.unlink(missing_ok=True)
 
     path = Path((info.get("requested_downloads") or [{}])[0].get("filepath") or "")
     if not path.exists():
-        found = [p for p in dest.glob("audio.*") if p.suffix not in (".part", ".ytdl")]
+        found = [p for p in dest.glob(f"{stem}.*") if p.suffix not in (".part", ".ytdl", ".json")]
         if not found:
-            raise DownloadError("yt-dlp не сохранил звуковую дорожку.")
+            raise DownloadError("yt-dlp не сохранил файл.")
         path = found[0]
-
-    meta = _meta(info, url)
-    meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
-    return path, meta
+    return path, info
 
 
 def _meta(info: dict, url: str) -> dict:
