@@ -1,14 +1,13 @@
 [project]
 name = "transcriptor"
-version = "0.1.0"
-description = "Локальный транскриптор YouTube: GigaAM v3 / Qwen3-ASR + pyannote + Claude"
+version = "0.2.0"
+description = "Transcribe YouTube videos on your own GPU: speech to text, speakers, on-screen text, AI summary and chapters, MCP server"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = "==3.11.*"
 dependencies = [
-    # PyTorch с CUDA. Связка 2.10 / torchcodec 0.10 / pyannote 4.0 проверена авторами GigaAM
-    "torch==2.10.*",
-    "torchaudio==2.10.*",
+    # PyTorch приходит из группы cu128 / cu126 / cpu ниже — под видеокарту (её выбирает install.ps1).
+    # Связка 2.10 / torchcodec 0.10 / pyannote 4.0 проверена авторами GigaAM
     "torchcodec==0.10.*",
     # Распознавание речи
     "gigaam",
@@ -20,7 +19,7 @@ dependencies = [
     # YouTube: yt-dlp + Deno (JS-движок для обхода защиты плеера) + ffmpeg
     "yt-dlp[default,deno]>=2026.8.19",
     "imageio-ffmpeg>=0.6",
-    # Пересказ и главы: Gemini или Claude
+    # Пересказ, главы и надписи на экране: Gemini или Claude
     "google-genai>=2.25.0",
     "anthropic>=1.8",
     # Веб-интерфейс
@@ -30,19 +29,49 @@ dependencies = [
     # Проверка HTTPS через хранилище сертификатов Windows (антивирусы и прокси подменяют сертификаты)
     "truststore>=0.10",
     "numpy>=2",
+    "pillow>=11",
     "soundfile>=0.13",
     "mcp[cli]>=2.2.0",
 ]
 
+# Сборки PyTorch. Ставится ровно одна:
+#   cu128 — NVIDIA GTX 16xx / RTX 20xx и новее (по умолчанию, `uv sync`);
+#   cu126 — старые NVIDIA GTX 9xx / 10xx (`uv sync --no-default-groups --group cu126`);
+#   cpu   — без видеокарты NVIDIA (`uv sync --no-default-groups --group cpu`).
+[dependency-groups]
+cu128 = ["torch==2.10.*", "torchaudio==2.10.*"]
+cu126 = ["torch==2.10.*", "torchaudio==2.10.*"]
+cpu = ["torch==2.10.*", "torchaudio==2.10.*"]
+
 [tool.uv]
 environments = ["sys_platform == 'win32'"]
+default-groups = ["cu128"]
+conflicts = [[{ group = "cu128" }, { group = "cu126" }, { group = "cpu" }]]
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu128" }
-torchaudio = { index = "pytorch-cu128" }
+torch = [
+    { index = "pytorch-cu128", group = "cu128" },
+    { index = "pytorch-cu126", group = "cu126" },
+    { index = "pytorch-cpu", group = "cpu" },
+]
+torchaudio = [
+    { index = "pytorch-cu128", group = "cu128" },
+    { index = "pytorch-cu126", group = "cu126" },
+    { index = "pytorch-cpu", group = "cpu" },
+]
 gigaam = { git = "https://github.com/salute-developers/GigaAM" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
 explicit = true

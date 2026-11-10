@@ -30,7 +30,7 @@ def load_audio(path: Path | str) -> np.ndarray:
     proc = subprocess.run(cmd, capture_output=True, creationflags=_no_window())
     if proc.returncode != 0:
         err = proc.stderr.decode("utf-8", errors="replace").strip()[-500:]
-        raise RuntimeError(f"ffmpeg не смог прочитать {Path(path).name}: {err}")
+        raise RuntimeError(f"ffmpeg could not read {Path(path).name}: {err}")
     return np.frombuffer(proc.stdout, dtype=np.int16).astype(np.float32) / 32768.0
 
 

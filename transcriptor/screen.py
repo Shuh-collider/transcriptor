@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 
 from . import config
 from .export import fmt_ts
+from .i18n import L
 from .media import ffmpeg_exe
 from .summarize import SummaryError, _object, call_gemini
 from .youtube import DownloadError, download_video
@@ -31,6 +32,10 @@ MAX_FRAMES = 240
 BATCH = 24  # кадров в одном запросе к Gemini
 
 Progress = Callable[[float, str], None]
+
+
+def _NOT_READ() -> str:
+    return L("On-screen text was not read: ", "Надписи на экране не прочитаны: ")
 
 
 class ScreenError(RuntimeError):
@@ -104,7 +109,7 @@ def extract_frames(video: Path, out_dir: Path, cancelled: Callable[[], bool]) ->
     text = log_path.read_text(encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         log.warning("ffmpeg frames failed:\n%s", text[-2000:])
-        raise ScreenError("ffmpeg не смог разобрать видео на кадры.")
+        raise ScreenError(L("ffmpeg could not split the video into frames.", "ffmpeg не смог разобрать видео на кадры."))
     times = [float(t) for t in re.findall(r"Parsed_showinfo.*?pts_time:\s*([\d.]+)", text)]
     frames = _one_per_screen(list(zip(times, sorted(out_dir.glob("*.jpg")))))
     if len(frames) > MAX_FRAMES:  # оставляем равномерно
@@ -159,7 +164,7 @@ def read_frames(
             raise ScreenCancelled()
         batch = frames[first : first + BATCH]
         last = min(first + BATCH, total)
-        say = lambda msg, a=first + 1, b=last: progress(first / total, f"Надписи, кадры {a}–{b} из {total}: {msg}")  # noqa: E731
+        say = lambda msg, a=first + 1, b=last: progress(first / total, L(f"On-screen text, frames {a}–{b} of {total}: {msg}", f"Надписи, кадры {a}–{b} из {total}: {msg}"))  # noqa: E731
         content: list[dict] = []
         if items:
             content.append({"type": "text", "text": "Text already reported just before these frames:\n" + items[-1]["text"]})
@@ -174,14 +179,15 @@ def read_frames(
         try:
             text, *_ = call_gemini(
                 SYSTEM, content, MODEL, say, schema=SCHEMA, thinking="low",
-                reading="Gemini смотрит кадры…", writing="Gemini выписывает надписи…",
+                reading=L("Gemini is looking at the frames…", "Gemini смотрит кадры…"),
+                writing=L("Gemini is writing out the text…", "Gemini выписывает надписи…"),
             )
             result = _Result.model_validate_json(re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", text))
         except SummaryError as exc:
-            raise ScreenError(f"Надписи на экране не прочитаны: {exc}") from exc
+            raise ScreenError(_NOT_READ() + str(exc)) from exc
         except ValidationError as exc:
             log.warning("unexpected screen JSON: %s", text[:500])
-            raise ScreenError("Надписи на экране не прочитаны: Gemini ответил в неожиданном формате.") from exc
+            raise ScreenError(_NOT_READ() + L("Gemini answered in an unexpected format.", "Gemini ответил в неожиданном формате.")) from exc
         times = {n: t for n, (t, _) in enumerate(batch, start=first + 1)}
         for item in sorted(result.items, key=lambda i: i.frame):
             body = item.text.strip()
@@ -193,7 +199,7 @@ def read_frames(
             if items and _norm(items[-1]["text"]) == _norm(body):
                 continue
             items.append({"start": times[item.frame], "text": body})
-    progress(1.0, "Надписи прочитаны")
+    progress(1.0, L("On-screen text read", "Надписи прочитаны"))
     return items
 
 
@@ -201,20 +207,20 @@ def read_screen(url: str, dest: Path, progress: Progress, cancelled: Callable[[]
     """Скачивает картинку видео, выбирает кадры и читает с них надписи. Видео после разбора удаляется."""
     config.reload_env()
     if not config.gemini_configured():
-        raise ScreenError("Надписи на экране не прочитаны: для этого нужен GEMINI_API_KEY в файле .env.")
+        raise ScreenError(_NOT_READ() + L("this needs GEMINI_API_KEY in the .env file.", "для этого нужен GEMINI_API_KEY в файле .env."))
 
     def downloading(frac: float) -> None:
         if cancelled():
             raise ScreenCancelled()
-        progress(0.25 * frac, "Скачиваю видео для надписей")
+        progress(0.25 * frac, L("Downloading the video picture", "Скачиваю видео для надписей"))
 
     frames_dir = dest / "frames"
     if not (frames_dir / "frames.json").exists():
         try:
             video = download_video(url, dest, downloading)
         except DownloadError as exc:
-            raise ScreenError(f"Надписи на экране не прочитаны: {exc}") from exc
-        progress(0.25, "Выбираю кадры, где меняется картинка")
+            raise ScreenError(_NOT_READ() + str(exc)) from exc
+        progress(0.25, L("Picking frames where the picture changes", "Выбираю кадры, где меняется картинка"))
         frames = extract_frames(video, frames_dir, cancelled)
         video.unlink(missing_ok=True)  # кадры уже есть, а видео занимает сотни мегабайт
     else:

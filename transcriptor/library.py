@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 
 from . import config
+from .i18n import L
 
 _cache: dict[Path, tuple[int, dict]] = {}
 _lock = threading.Lock()
@@ -44,7 +45,7 @@ def all_docs() -> list[dict]:
 def speaker_name(doc: dict, label: str | None) -> str:
     if not label:
         return ""
-    return ((doc.get("speakers") or {}).get(label) or {}).get("name") or f"Спикер {label.lstrip('S')}"
+    return ((doc.get("speakers") or {}).get(label) or {}).get("name") or L("Speaker ", "Спикер ") + label.lstrip("S")
 
 
 def watch_url(url: str | None, seconds: float) -> str | None:

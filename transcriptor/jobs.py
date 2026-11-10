@@ -15,7 +15,11 @@ from concurrent.futures import ThreadPoolExecutor
 from . import config
 from .pipeline import STAGES, Cancelled, Models, Options, load_doc, save_doc, summarize_video, transcribe_video
 from .summarize import SummaryError
+from .i18n import L
 from .youtube import DownloadError
+
+# заметки о неудачном пересказе: при повторном пересказе старые убираем
+_SUMMARY_NOTE = ("Summary not made", "Пересказ")
 
 log = logging.getLogger(__name__)
 
@@ -166,7 +170,7 @@ class JobManager:
             return job
         if load_doc(job["video_id"]) is None:
             return job
-        job = self._update(job_id, status="summarizing", stage="summary", message="Готовлю пересказ…", error=None)
+        job = self._update(job_id, status="summarizing", stage="summary", message=L("Preparing the summary…", "Готовлю пересказ…"), error=None)
         self._summary_pool.submit(self._summarize, job_id, model, language)
         return job
 
@@ -287,7 +291,7 @@ class JobManager:
             progress=1.0,
         )
         if options.summarize and (doc["segments"] or doc.get("screen")):
-            self._update(job_id, status="summarizing", stage="summary", message="Готовлю пересказ…", **values)
+            self._update(job_id, status="summarizing", stage="summary", message=L("Preparing the summary…", "Готовлю пересказ…"), **values)
             self._summary_pool.submit(self._summarize, job_id, None, None)
         else:
             self._update(job_id, status="done", stage=None, message=None, finished_at=time.time(), **values)
@@ -303,7 +307,7 @@ class JobManager:
         options = Options.from_dict(job["options"])
         model = model if model in config.SUMMARY_MODELS else options.summary_model
         language = language or options.summary_language
-        notes = [n for n in job["notes"] if not n.startswith("Пересказ")]
+        notes = [n for n in job["notes"] if not n.startswith(_SUMMARY_NOTE)]
         try:
             doc = summarize_video(
                 job["video_id"], model, language, lambda msg: self._update(job_id, message=msg)
@@ -315,15 +319,15 @@ class JobManager:
             self._summary_failed(job_id, job["video_id"], str(exc), notes)
         except Exception as exc:  # noqa: BLE001
             log.error("summary %s failed:\n%s", job_id, traceback.format_exc())
-            self._summary_failed(job_id, job["video_id"], f"Пересказ не сделан: {exc}", notes)
+            self._summary_failed(job_id, job["video_id"], f"{exc}", notes)
 
     def _summary_failed(self, job_id: str, video_id: str, error: str, notes: list[str]) -> None:
         doc = load_doc(video_id)
         if doc is not None:
             doc["summary_error"] = error
             save_doc(doc)
-        if not error.startswith("Пересказ"):
-            error = f"Пересказ не сделан: {error}"
+        if not error.startswith(_SUMMARY_NOTE):
+            error = L("Summary not made: ", "Пересказ не сделан: ") + error
         if self.get(job_id):
             self._update(job_id, status="done", stage=None, message=None, notes=notes + [error],
                          finished_at=time.time())

@@ -30,7 +30,7 @@ PORT = int(os.getenv("TRANSCRIPTOR_PORT", "8000"))
 # у Gemini цену не считаем: ключ из AI Studio обычно работает на бесплатном тарифе.
 SUMMARY_MODELS: dict[str, dict] = {
     "gemini-3.8-flash": {"title": "Gemini 3.8 Flash", "provider": "gemini"},
-    "gemini-3.1-pro-preview": {"title": "Gemini 3.1 Pro (только платно)", "provider": "gemini"},
+    "gemini-3.1-pro-preview": {"title": "Gemini 3.1 Pro (paid only)", "title_ru": "Gemini 3.1 Pro (только платно)", "provider": "gemini"},
     "gemini-3.5-flash-lite": {"title": "Gemini 3.5 Flash-Lite", "provider": "gemini"},
     "claude-opus-5": {"title": "Claude Opus 5", "provider": "anthropic", "input": 5.0, "output": 25.0},
     "claude-sonnet-5": {"title": "Claude Sonnet 5", "provider": "anthropic", "input": 2.0, "output": 10.0},

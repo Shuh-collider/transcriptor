@@ -1,33 +1,41 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Транскриптор</title>
+  <title>Transcriptor</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%235b5bd6'/%3E%3Cpath d='M6 12h1M9 8.5v7M12 6v12M15 8.5v7M18 12h0' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/style.css">
   <script type="module" src="/static/app.js"></script>
 </head>
 <body>
+  <!-- Тексты на английском; русский вариант — в атрибутах data-ru*, их подставляет util.js -->
   <header class="topbar">
     <div class="brand">
       <span class="logo" aria-hidden="true"></span>
-      <span>Транскриптор</span>
+      <span data-ru="Транскриптор">Transcriptor</span>
     </div>
-    <button class="status" id="status" type="button" title="Состояние и настройка"></button>
+    <div class="top-actions">
+      <div class="lang-switch" id="lang-switch" role="group" aria-label="Language / Язык">
+        <button type="button" data-lang="en">EN</button>
+        <button type="button" data-lang="ru">RU</button>
+      </div>
+      <button class="status" id="status" type="button" title="Status and setup" data-ru-title="Состояние и настройка"></button>
+    </div>
   </header>
 
   <main class="layout">
     <aside class="sidebar">
       <form id="new-form" class="card new" autocomplete="off">
-        <h2>Новая расшифровка</h2>
+        <h2 data-ru="Новая расшифровка">New transcript</h2>
         <textarea id="urls" rows="3" required
-          placeholder="Ссылки на видео, плейлисты или каналы YouTube — по одной в строке"></textarea>
+          placeholder="YouTube links to videos, playlists or channels, one per line"
+          data-ru-placeholder="Ссылки на видео, плейлисты или каналы YouTube — по одной в строке"></textarea>
 
         <div class="opt-row">
-          <span class="opt-label">Язык видео</span>
+          <span class="opt-label" data-ru="Язык видео">Video language</span>
           <div class="seg" data-opt="language">
-            <button type="button" data-value="auto">Авто</button>
+            <button type="button" data-value="auto" data-ru="Авто">Auto</button>
             <button type="button" data-value="ru">Русский</button>
             <button type="button" data-value="en">English</button>
           </div>
@@ -36,46 +44,51 @@
         <label class="toggle">
           <input type="checkbox" data-opt="diarize">
           <span class="track"></span>
-          <span>Кто говорит</span>
-          <input type="number" class="num" data-opt="num_speakers" min="1" max="20" placeholder="авто"
-            title="Сколько человек говорит в видео, если знаете точно">
+          <span data-ru="Кто говорит">Who is speaking</span>
+          <input type="number" class="num" data-opt="num_speakers" min="1" max="20" placeholder="auto"
+            data-ru-placeholder="авто"
+            title="How many people speak in the video, if you know exactly"
+            data-ru-title="Сколько человек говорит в видео, если знаете точно">
         </label>
 
-        <label class="toggle" title="Слайды, подписи, интерфейсы — через Gemini. Дольше; полезно, когда в видео мало речи">
+        <label class="toggle" title="Slides, captions, interfaces — with Gemini. Slower; useful when the video has little speech"
+          data-ru-title="Слайды, подписи, интерфейсы — через Gemini. Дольше; полезно, когда в видео мало речи">
           <input type="checkbox" data-opt="screen_text">
           <span class="track"></span>
-          <span>Читать надписи на экране</span>
+          <span data-ru="Читать надписи на экране">Read on-screen text</span>
         </label>
 
         <label class="toggle">
           <input type="checkbox" data-opt="summarize">
           <span class="track"></span>
-          <span>Пересказ и главы</span>
+          <span data-ru="Пересказ и главы">Summary and chapters</span>
         </label>
         <div class="sub-opts" id="summary-opts">
-          <select data-opt="summary_model" id="model-select" aria-label="Модель Claude"></select>
+          <select data-opt="summary_model" id="model-select" aria-label="Summary model" data-ru-aria-label="Модель для пересказа"></select>
           <div class="seg small" data-opt="summary_language">
-            <button type="button" data-value="ru">на русском</button>
-            <button type="button" data-value="same">как в видео</button>
+            <button type="button" data-value="same" data-ru="как в видео">as in video</button>
+            <button type="button" data-value="en" data-ru="английский">English</button>
+            <button type="button" data-value="ru" data-ru="русский">Russian</button>
           </div>
         </div>
 
         <details class="advanced">
-          <summary>Движок для русского</summary>
+          <summary data-ru="Движок для русского">Engine for Russian</summary>
           <div class="seg small" data-opt="ru_engine">
-            <button type="button" data-value="gigaam">GigaAM v3 · точнее</button>
+            <button type="button" data-value="gigaam" data-ru="GigaAM v3 · точнее">GigaAM v3 · more accurate</button>
             <button type="button" data-value="qwen">Qwen3-ASR</button>
           </div>
         </details>
 
-        <button type="submit" class="primary" id="submit">Расшифровать</button>
+        <button type="submit" class="primary" id="submit" data-ru="Расшифровать">Transcribe</button>
         <p class="form-error" id="form-error" hidden></p>
       </form>
 
       <section class="queue">
         <div class="queue-head">
-          <h2>Очередь и история</h2>
-          <input type="search" id="filter" placeholder="Найти" aria-label="Найти в истории">
+          <h2 data-ru="Очередь и история">Queue and history</h2>
+          <input type="search" id="filter" placeholder="Find" data-ru-placeholder="Найти"
+            aria-label="Search the history" data-ru-aria-label="Найти в истории">
         </div>
         <div id="jobs" class="jobs"></div>
       </section>
@@ -91,19 +104,19 @@
           <h2 id="picker-title"></h2>
           <p class="muted" id="picker-sub"></p>
         </div>
-        <button class="icon-btn" value="cancel" aria-label="Закрыть">✕</button>
+        <button class="icon-btn" value="cancel" aria-label="Close" data-ru-aria-label="Закрыть">✕</button>
       </header>
       <div class="picker-tools">
-        <button type="button" class="ghost" data-pick="all">Все</button>
-        <button type="button" class="ghost" data-pick="none">Ни одного</button>
-        <button type="button" class="ghost" data-pick="10">Первые 10</button>
-        <input type="search" id="picker-filter" placeholder="Фильтр по названию">
+        <button type="button" class="ghost" data-pick="all" data-ru="Все">All</button>
+        <button type="button" class="ghost" data-pick="none" data-ru="Ни одного">None</button>
+        <button type="button" class="ghost" data-pick="10" data-ru="Первые 10">First 10</button>
+        <input type="search" id="picker-filter" placeholder="Filter by title" data-ru-placeholder="Фильтр по названию">
       </div>
       <ul class="picker-list" id="picker-list"></ul>
       <footer class="dialog-foot">
         <span class="muted" id="picker-total"></span>
-        <button class="ghost" value="cancel">Отмена</button>
-        <button class="primary" value="ok" id="picker-ok">Добавить</button>
+        <button class="ghost" value="cancel" data-ru="Отмена">Cancel</button>
+        <button class="primary" value="ok" id="picker-ok" data-ru="Добавить">Add</button>
       </footer>
     </form>
   </dialog>
@@ -111,13 +124,13 @@
   <dialog id="setup" class="dialog">
     <form method="dialog" class="dialog-body">
       <header class="dialog-head">
-        <h2>Состояние</h2>
-        <button class="icon-btn" value="cancel" aria-label="Закрыть">✕</button>
+        <h2 data-ru="Состояние">Status</h2>
+        <button class="icon-btn" value="cancel" aria-label="Close" data-ru-aria-label="Закрыть">✕</button>
       </header>
       <div id="setup-body"></div>
       <footer class="dialog-foot">
-        <button type="button" class="ghost" id="setup-refresh">Проверить снова</button>
-        <button class="primary" value="ok">Готово</button>
+        <button type="button" class="ghost" id="setup-refresh" data-ru="Проверить снова">Check again</button>
+        <button class="primary" value="ok" data-ru="Готово">Done</button>
       </footer>
     </form>
   </dialog>

@@ -38,9 +38,9 @@ Typical workflow:
 3. transcriptor_get_jobs with wait_seconds (up to 45 per call) — repeat until the jobs are "done" (about 1–2 minutes per 30 minutes of video, plus ~10–30 s for the summary).
 4. transcriptor_get_summary (summary, key points, chapters, speakers) or transcriptor_get_transcript (full text, paginated).
 
-Transcripts are usually in Russian. Timestamps are measured from the start of the video; links with &t= open YouTube at that moment."""
+Transcripts are in the language of the video (Russian or English); summaries are in the language chosen when queuing. Timestamps are measured from the start of the video; links with &t= open YouTube at that moment."""
 
-mcp = MCPServer("transcriptor_mcp", title="Транскриптор", instructions=INSTRUCTIONS, version=__version__)
+mcp = MCPServer("transcriptor_mcp", title="Transcriptor", instructions=INSTRUCTIONS, version=__version__)
 
 FINAL = {"done", "error", "canceled"}
 ACTIVE = {"queued", "running", "summarizing"}
@@ -243,7 +243,7 @@ async def transcriptor_transcribe(
     num_speakers: Annotated[int | None, Field(ge=1, le=20, description="Exact number of speakers, if known")] = None,
     summarize: Annotated[bool, Field(description="Also write a summary with chapters")] = True,
     summary_model: Annotated[str | None, Field(description="Summary model id from transcriptor_get_status; default if omitted")] = None,
-    summary_language: Annotated[Literal["ru", "en", "same"], Field(description="Summary language; 'same' = language of the video")] = "ru",
+    summary_language: Annotated[Literal["ru", "en", "same"], Field(description="Summary language; 'same' = language of the video")] = "same",
     screen_text: Annotated[bool, Field(description="Also read text shown on screen (slides, captions, interfaces) with Gemini; useful for videos with little speech. Slower, needs GEMINI_API_KEY")] = False,
     max_videos_per_link: Annotated[int, Field(ge=1, le=50, description="For playlists/channels: how many videos to queue")] = 5,
     skip_existing: Annotated[bool, Field(description="Skip videos that already have a transcript")] = True,
@@ -568,7 +568,7 @@ async def transcriptor_summarize(
     video_id: VideoId,
     ctx: Context,
     model: Annotated[str | None, Field(description="Summary model id from transcriptor_get_status; default if omitted")] = None,
-    language: Annotated[Literal["ru", "en", "same"], Field(description="Summary language; 'same' = language of the video")] = "ru",
+    language: Annotated[Literal["ru", "en", "same"], Field(description="Summary language; 'same' = language of the video")] = "same",
     wait_seconds: Annotated[int, Field(ge=0, le=MAX_WAIT, description=f"Wait for the result up to this long (max {MAX_WAIT} s); 0 = just start")] = MAX_WAIT,
 ) -> str:
     """Create or replace the summary, key points, chapters and speaker names of an already transcribed video

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ValidationError
 
 from . import config
 from .export import fmt_ts, parse_ts, timeline
+from .i18n import L
 
 log = logging.getLogger(__name__)
 
@@ -126,12 +127,12 @@ def _snap_chapters(chapters: list[Chapter], doc: dict) -> list[dict]:
 def summarize(doc: dict, model: str, language: str, progress: Say | None = None) -> dict:
     """language: код языка ответа (ru / en). Если для выбранной модели нет ключа, берётся доступная."""
     if not doc.get("segments") and not doc.get("screen"):
-        raise SummaryError("Нечего пересказывать: в видео не найдено ни речи, ни надписей.")
+        raise SummaryError(L("Nothing to summarize: the video has neither speech nor on-screen text.", "Нечего пересказывать: в видео не найдено ни речи, ни надписей."))
     config.reload_env()
     model = config.resolve_summary_model(model)
     provider = config.SUMMARY_MODELS[model]["provider"]
     if not config.providers()[provider]:
-        raise SummaryError("Пересказ не сделан: в файле .env нет ни GEMINI_API_KEY, ни ANTHROPIC_API_KEY.")
+        raise SummaryError(L("Summary not made: the .env file has neither GEMINI_API_KEY nor ANTHROPIC_API_KEY.", "Пересказ не сделан: в файле .env нет ни GEMINI_API_KEY, ни ANTHROPIC_API_KEY."))
 
     say = progress or (lambda _msg: None)
     system = SYSTEM.format(language=LANGUAGE_NAMES.get(language, "Russian"))
@@ -144,7 +145,7 @@ def summarize(doc: dict, model: str, language: str, progress: Say | None = None)
         result = SummaryResult.model_validate_json(text)
     except ValidationError as exc:
         log.warning("unexpected summary JSON: %s", text[:500])
-        raise SummaryError("Модель вернула ответ в неожиданном формате — попробуйте ещё раз.") from exc
+        raise SummaryError(L("The model answered in an unexpected format; please try again.", "Модель вернула ответ в неожиданном формате — попробуйте ещё раз.")) from exc
 
     return {
         "model": used_model,
@@ -176,25 +177,25 @@ def _gemini_error(exc: Exception, model: str) -> tuple[bool, str]:
     from google.genai._gaos.lib.compat_errors import APIConnectionError
 
     if isinstance(exc, APIConnectionError):
-        return True, "Нет связи с Gemini API — проверьте интернет."
+        return True, L("Cannot reach the Gemini API; check your internet connection.", "Нет связи с Gemini API — проверьте интернет.")
     code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
     body = getattr(exc, "body", None)
     text = (body.get("error") or {}).get("message") if isinstance(body, dict) else None
     text = str(text or getattr(exc, "message", None) or exc)
     low = text.lower()
     if "location is not supported" in low:
-        return False, "Gemini API недоступен в вашей стране — это ограничение Google."
+        return False, L("The Gemini API is not available in your country (a Google restriction).", "Gemini API недоступен в вашей стране — это ограничение Google.")
     if "api key not valid" in low or "api_key_invalid" in low or code == 401:
-        return False, "Google не принял GEMINI_API_KEY — проверьте ключ в .env."
+        return False, L("Google rejected GEMINI_API_KEY; check the key in .env.", "Google не принял GEMINI_API_KEY — проверьте ключ в .env.")
     if code == 403:
-        return False, f"У ключа нет доступа к {model}: {text[:200]}"
+        return False, L(f"The key has no access to {model}: ", f"У ключа нет доступа к {model}: ") + text[:200]
     if code == 404:
-        return False, f"Модель {model} недоступна для этого ключа."
+        return False, L(f"Model {model} is not available for this key.", f"Модель {model} недоступна для этого ключа.")
     if code == 429:
-        return True, "Превышен лимит запросов Gemini (на бесплатном тарифе — несколько запросов в минуту). Попробуйте позже."
+        return True, L("Gemini rate limit exceeded (the free tier allows a few requests per minute). Try again later.", "Превышен лимит запросов Gemini (на бесплатном тарифе — несколько запросов в минуту). Попробуйте позже.")
     if code in (500, 502, 503, 504):
-        return True, "Серверы Gemini перегружены — попробуйте позже."
-    return False, f"Ошибка Gemini API ({code}): {text[:300]}"
+        return True, L("Gemini servers are overloaded; try again later.", "Серверы Gemini перегружены — попробуйте позже.")
+    return False, L("Gemini API error", "Ошибка Gemini API") + f" ({code}): {text[:300]}"
 
 
 def call_gemini(
@@ -204,8 +205,8 @@ def call_gemini(
     say: Say,
     schema: dict = SCHEMA,
     thinking: str = "medium",
-    reading: str = "Gemini читает расшифровку…",
-    writing: str = "Gemini пишет пересказ…",
+    reading: str | None = None,
+    writing: str | None = None,
 ) -> tuple[str, str, dict, float | None]:
     """Запрос к Gemini с ответом в JSON по схеме. user — текст или список блоков (текст и картинки)."""
     import httpx
@@ -218,9 +219,9 @@ def call_gemini(
     delays = [0, 10, 30]
     for attempt, delay in enumerate(delays):
         if delay:
-            say(f"Gemini занят, повторяю через {delay} с…")
+            say(L(f"Gemini is busy, retrying in {delay} s…", f"Gemini занят, повторяю через {delay} с…"))
             time.sleep(delay)
-        say(reading)
+        say(reading or L("Gemini is reading the transcript…", "Gemini читает расшифровку…"))
         parts: list[str] = []
         usage = None
         status = None
@@ -243,13 +244,13 @@ def call_gemini(
                 if kind == "step.delta" and getattr(event.delta, "type", "") == "text":
                     parts.append(event.delta.text)
                     written += len(event.delta.text)
-                    say(f"{writing} {written} симв.")
+                    say(f"{writing or L('Gemini is writing the summary…', 'Gemini пишет пересказ…')} {written} " + L("chars", "симв."))
                 elif kind == "interaction.completed":
                     usage = getattr(event.interaction, "usage", None)
                     status = getattr(event.interaction, "status", None)
                 elif kind == "error":
                     err = getattr(event, "error", None)
-                    raise SummaryError(f"Gemini вернул ошибку: {getattr(err, 'message', None) or err}")
+                    raise SummaryError(L("Gemini returned an error: ", "Gemini вернул ошибку: ") + str(getattr(err, "message", None) or err))
             break
         except (InteractionsError, genai_errors.APIError, GenAiError) as exc:
             retry, message = _gemini_error(exc, model)
@@ -258,15 +259,15 @@ def call_gemini(
                 raise SummaryError(message) from exc
         except httpx.HTTPError as exc:
             if attempt == len(delays) - 1:
-                raise SummaryError("Нет связи с Gemini API — проверьте интернет.") from exc
+                raise SummaryError(L("Cannot reach the Gemini API; check your internet connection.", "Нет связи с Gemini API — проверьте интернет.")) from exc
 
     if status in ("incomplete", "budget_exceeded"):
-        raise SummaryError("Пересказ не поместился в лимит ответа.")
+        raise SummaryError(L("The answer did not fit into the output limit.", "Ответ не поместился в лимит модели."))
     if status in ("failed", "cancelled"):
-        raise SummaryError("Gemini не смог обработать запрос.")
+        raise SummaryError(L("Gemini could not process the request.", "Gemini не смог обработать запрос."))
     text = "".join(parts)
     if not text.strip():
-        raise SummaryError("Gemini вернул пустой ответ (возможно, сработал фильтр безопасности).")
+        raise SummaryError(L("Gemini returned an empty answer (perhaps a safety filter).", "Gemini вернул пустой ответ (возможно, сработал фильтр безопасности)."))
     tokens = {
         "input_tokens": getattr(usage, "total_input_tokens", None),
         "output_tokens": (getattr(usage, "total_output_tokens", None) or 0) + (getattr(usage, "total_thought_tokens", None) or 0),
@@ -306,35 +307,35 @@ def _call_claude(system: str, user: str, model: str, say: Say) -> tuple[str, str
             stream_ctx = client.beta.messages.stream(**params, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
         else:
             stream_ctx = client.messages.stream(**params)
-        say("Claude читает расшифровку…")
+        say(L("Claude is reading the transcript…", "Claude читает расшифровку…"))
         written = 0
         with stream_ctx as stream:
             for event in stream:
                 if event.type == "content_block_start" and event.content_block.type == "thinking":
-                    say("Claude анализирует содержание…")
+                    say(L("Claude is analyzing the content…", "Claude анализирует содержание…"))
                 elif event.type == "content_block_delta" and event.delta.type == "text_delta":
                     written += len(event.delta.text)
-                    say(f"Claude пишет пересказ… {written} симв.")
+                    say(L(f"Claude is writing the summary… {written} chars", f"Claude пишет пересказ… {written} симв."))
             final = stream.get_final_message()
     except anthropic.AuthenticationError as exc:
-        raise SummaryError("Claude не принял ключ ANTHROPIC_API_KEY — проверьте его в .env.") from exc
+        raise SummaryError(L("Claude rejected ANTHROPIC_API_KEY; check it in .env.", "Claude не принял ключ ANTHROPIC_API_KEY — проверьте его в .env.")) from exc
     except anthropic.PermissionDeniedError as exc:
-        raise SummaryError(f"У ключа нет доступа к {model}: {exc.message}") from exc
+        raise SummaryError(L(f"The key has no access to {model}: ", f"У ключа нет доступа к {model}: ") + exc.message) from exc
     except anthropic.NotFoundError as exc:
-        raise SummaryError(f"Модель {model} недоступна для этого ключа.") from exc
+        raise SummaryError(L(f"Model {model} is not available for this key.", f"Модель {model} недоступна для этого ключа.")) from exc
     except anthropic.RateLimitError as exc:
-        raise SummaryError("Превышен лимит запросов к Claude — попробуйте позже.") from exc
+        raise SummaryError(L("Claude rate limit exceeded; try again later.", "Превышен лимит запросов к Claude — попробуйте позже.")) from exc
     except anthropic.BadRequestError as exc:
-        raise SummaryError(f"Claude отклонил запрос: {exc.message}") from exc
+        raise SummaryError(L("Claude rejected the request: ", "Claude отклонил запрос: ") + exc.message) from exc
     except anthropic.APIStatusError as exc:
-        raise SummaryError(f"Ошибка Claude API ({exc.status_code}): {exc.message}") from exc
+        raise SummaryError(L("Claude API error", "Ошибка Claude API") + f" ({exc.status_code}): {exc.message}") from exc
     except anthropic.APIConnectionError as exc:
-        raise SummaryError("Нет связи с Claude API — проверьте интернет.") from exc
+        raise SummaryError(L("Cannot reach the Claude API; check your internet connection.", "Нет связи с Claude API — проверьте интернет.")) from exc
 
     if final.stop_reason == "refusal":
-        raise SummaryError("Claude отказался пересказывать это видео.")
+        raise SummaryError(L("Claude declined to summarize this video.", "Claude отказался пересказывать это видео."))
     if final.stop_reason == "max_tokens":
-        raise SummaryError("Пересказ не поместился в лимит ответа.")
+        raise SummaryError(L("The answer did not fit into the output limit.", "Ответ не поместился в лимит модели."))
     text = next((b.text for b in final.content if b.type == "text"), "")
     usage = final.usage
     tokens = {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens}

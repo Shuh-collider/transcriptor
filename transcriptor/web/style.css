@@ -87,6 +87,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border: 0; background: none; cursor: pointer; padding: 4px; border-radius: 10px;
 }
 .status:hover { background: var(--surface-2); }
+.top-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lang-switch { display: inline-flex; padding: 2px; border-radius: 9px; border: 1px solid var(--border); }
+.lang-switch button {
+  font-size: 12.5px; font-weight: 650; letter-spacing: 0.04em; padding: 3px 9px; border-radius: 7px;
+  border: 0; background: none; color: var(--muted); cursor: pointer;
+}
+.lang-switch button:hover { background: var(--surface-2); }
+.lang-switch button.on { background: var(--accent); color: #fff; cursor: default; }
 .chip {
   display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
   font-size: 12.5px; padding: 3px 9px; border-radius: 999px;

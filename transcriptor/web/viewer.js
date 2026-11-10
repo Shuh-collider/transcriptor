@@ -1,4 +1,4 @@
-import { $, $$, esc, fmtTs, fmtCount, fmtExact, fmtDate, plural, api, icons, md, LANGS, toast, modelOptionsHtml } from "./util.js";
+import { $, $$, esc, fmtTs, fmtCount, fmtExact, fmtDate, plural, api, icons, md, LANGS, toast, modelOptionsHtml, L } from "./util.js";
 
 const HUES = [250, 22, 152, 330, 200, 45, 285, 100, 0, 175];
 const hue = (label) => HUES[(parseInt(String(label).replace(/\D/g, ""), 10) - 1 || 0) % HUES.length];
@@ -20,7 +20,7 @@ const hours = () => (cur?.doc?.video?.duration || 0) >= 3600;
 
 function speakerName(label) {
   const info = cur.doc.speakers?.[label];
-  return info?.name || `Спикер ${String(label).replace(/\D/g, "")}`;
+  return info?.name || `${L("Speaker", "Спикер")} ${String(label).replace(/\D/g, "")}`;
 }
 
 function teardown() {
@@ -89,14 +89,14 @@ async function refreshDoc() {
 
 function placeholder() {
   return `<div class="placeholder">
-    <h1>Расшифровка видео с YouTube</h1>
-    <p>Вставьте слева ссылку на видео, плейлист или канал.</p>
+    <h1>${L("Transcribe YouTube videos", "Расшифровка видео с YouTube")}</h1>
+    <p>${L("Paste a link to a video, playlist or channel on the left.", "Вставьте слева ссылку на видео, плейлист или канал.")}</p>
     <ol>
-      <li>yt-dlp скачает только звук.</li>
-      <li>Silero VAD найдёт фрагменты речи.</li>
-      <li>GigaAM v3 или Qwen3-ASR распознают речь на вашей видеокарте.</li>
-      <li>pyannote определит, кто говорит.</li>
-      <li>Gemini или Claude напишет пересказ и разобьёт видео на главы.</li>
+      <li>${L("yt-dlp downloads only the audio.", "yt-dlp скачает только звук.")}</li>
+      <li>${L("Silero VAD finds the speech.", "Silero VAD найдёт фрагменты речи.")}</li>
+      <li>${L("GigaAM v3 or Qwen3-ASR recognize the speech on your GPU.", "GigaAM v3 или Qwen3-ASR распознают речь на вашей видеокарте.")}</li>
+      <li>${L("pyannote finds who is speaking.", "pyannote определит, кто говорит.")}</li>
+      <li>${L("Gemini or Claude writes a summary and splits the video into chapters.", "Gemini или Claude напишет пересказ и разобьёт видео на главы.")}</li>
     </ol>
     <div class="tech">
       <span class="chip">yt-dlp + Deno</span><span class="chip">Silero VAD</span><span class="chip">GigaAM v3</span>
@@ -108,26 +108,26 @@ function placeholder() {
 /* ---------- прогресс ---------- */
 
 const STEPS = [
-  ["download", "Скачивание звука"],
-  ["prepare", "Поиск речи"],
-  ["language", "Определение языка"],
-  ["asr", "Распознавание речи"],
-  ["diarize", "Кто говорит"],
-  ["screen", "Надписи на экране"],
-  ["summary", "Пересказ и главы"],
+  ["download", L("Downloading audio", "Скачивание звука")],
+  ["prepare", L("Finding speech", "Поиск речи")],
+  ["language", L("Detecting the language", "Определение языка")],
+  ["asr", L("Recognizing speech", "Распознавание речи")],
+  ["diarize", L("Who is speaking", "Кто говорит")],
+  ["screen", L("On-screen text", "Надписи на экране")],
+  ["summary", L("Summary and chapters", "Пересказ и главы")],
 ];
 
 function progressBody(j) {
   if (j.status === "error") {
     return `<div class="note error">${icons.alert}<span>${esc(j.error)}</span></div>
-      <div><button class="primary" data-act="retry">Повторить</button></div>`;
+      <div><button class="primary" data-act="retry">${L("Retry", "Повторить")}</button></div>`;
   }
   if (j.status === "canceled") {
-    return `<p class="muted">Задание отменено.</p><div><button class="primary" data-act="retry">Запустить снова</button></div>`;
+    return `<p class="muted">${L("The job was canceled.", "Задание отменено.")}</p><div><button class="primary" data-act="retry">${L("Start again", "Запустить снова")}</button></div>`;
   }
   if (j.status === "queued") {
-    return `<p class="muted">В очереди. Видео обрабатываются по одному, чтобы не делить видеокарту.</p>
-      <div><button class="ghost" data-act="cancel">Убрать из очереди</button></div>`;
+    return `<p class="muted">${L("Queued. Videos are processed one at a time so they do not share the GPU.", "В очереди. Видео обрабатываются по одному, чтобы не делить видеокарту.")}</p>
+      <div><button class="ghost" data-act="cancel">${L("Remove from the queue", "Убрать из очереди")}</button></div>`;
   }
   const o = j.options || {};
   const steps = STEPS.filter(
@@ -140,11 +140,11 @@ function progressBody(j) {
   const idx = steps.findIndex(([k]) => k === j.stage);
   const pct = Math.round((j.progress || 0) * 100);
   return `<div class="bar"><i style="width:${pct}%"></i></div>
-    <p>${esc(j.message || "Готовлюсь…")} · ${pct}%</p>
+    <p>${esc(j.message || L("Getting ready…", "Готовлюсь…"))} · ${pct}%</p>
     <ol class="steps">${steps
       .map(([, t], i) => `<li class="${i < idx ? "done" : i === idx ? "now" : ""}"><span class="dot"></span>${t}</li>`)
       .join("")}</ol>
-    <div><button class="ghost" data-act="cancel">Остановить</button></div>`;
+    <div><button class="ghost" data-act="cancel">${L("Stop", "Остановить")}</button></div>`;
 }
 
 function renderProgress(full) {
@@ -194,7 +194,7 @@ function renderHead() {
     v.channel,
     v.duration ? fmtTs(v.duration) : null,
     LANGS[doc.language] || doc.language,
-    n ? `${n} ${plural(n, ["спикер", "спикера", "спикеров"])}` : null,
+    n ? `${n} ${plural(n, ["speaker", "speakers"], ["спикер", "спикера", "спикеров"])}` : null,
   ].filter(Boolean);
   const base = `/api/videos/${encodeURIComponent(v.id)}/export`;
   $("#doc-head").innerHTML = `<div>
@@ -203,7 +203,7 @@ function renderHead() {
       <div class="doc-meta">${statsHtml(v)}</div>
     </div>
     <div class="doc-actions">
-      <button class="ghost" data-act="copy">${icons.copy}Копировать</button>
+      <button class="ghost" data-act="copy">${icons.copy}${L("Copy", "Копировать")}</button>
       <a class="ghost" href="${base}.md" download>${icons.download}Markdown</a>
       <a class="ghost" href="${base}.txt" download>TXT</a>
       <a class="ghost" href="${base}.json" download>JSON</a>
@@ -212,15 +212,19 @@ function renderHead() {
 
 /** Дата загрузки, просмотры и лайки с YouTube; точные числа и дата замера — во всплывающей подсказке. */
 function statsHtml(v) {
-  const asOf = v.stats_at ? ` на ${fmtDate(v.stats_at)}` : "";
-  // после «тыс.» и «млн» всегда «просмотров», поэтому окончание по точному числу — только до тысячи
-  const count = (n, forms) =>
-    `<span title="${esc(fmtExact(n))} ${plural(n, forms)}${asOf}">${esc(fmtCount(n))} ${n >= 1000 ? forms[2] : plural(n, forms)}</span>`;
+  const asOf = v.stats_at ? L(` as of ${fmtDate(v.stats_at)}`, ` на ${fmtDate(v.stats_at)}`) : "";
+  // по-русски после «тыс.» и «млн» всегда «просмотров», поэтому окончание по точному числу — только до тысячи
+  const count = (n, en, ru) =>
+    `<span title="${esc(fmtExact(n))} ${plural(n, en, ru)}${asOf}">${esc(fmtCount(n))} ${
+      n >= 1000 ? L(en[1], ru[2]) : plural(n, en, ru)
+    }</span>`;
   const parts = [];
-  if (v.upload_date) parts.push(`<span>загружено ${esc(fmtDate(v.upload_date))}</span>`);
-  if (v.view_count != null) parts.push(count(v.view_count, ["просмотр", "просмотра", "просмотров"]));
-  if (v.like_count != null) parts.push(count(v.like_count, ["лайк", "лайка", "лайков"]));
-  const hint = parts.length ? `Обновить просмотры и лайки (данные${asOf || " без даты"})` : "Загрузить дату и просмотры с YouTube";
+  if (v.upload_date) parts.push(`<span>${L("uploaded", "загружено")} ${esc(fmtDate(v.upload_date))}</span>`);
+  if (v.view_count != null) parts.push(count(v.view_count, ["view", "views"], ["просмотр", "просмотра", "просмотров"]));
+  if (v.like_count != null) parts.push(count(v.like_count, ["like", "likes"], ["лайк", "лайка", "лайков"]));
+  const hint = parts.length
+    ? L(`Refresh views and likes (data${asOf || " without a date"})`, `Обновить просмотры и лайки (данные${asOf || " без даты"})`)
+    : L("Load the date and views from YouTube", "Загрузить дату и просмотры с YouTube");
   return `${parts.join("")}<button class="icon-btn small" data-act="refresh-meta" title="${esc(hint)}" aria-label="${esc(hint)}">${icons.retry}</button>`;
 }
 
@@ -235,19 +239,19 @@ function renderSide() {
   const total = speakers.reduce((s, [, i]) => s + (i.seconds || 0), 0) || 1;
   let html = "";
   if (speakers.length) {
-    html += `<div class="panel"><h3>Спикеры</h3><div class="speakers">${speakers
+    html += `<div class="panel"><h3>${L("Speakers", "Спикеры")}</h3><div class="speakers">${speakers
       .map(
         ([label, info]) => `<div class="speaker-row" style="--h:${hue(label)}">
           <span class="dot"></span>
-          <input type="text" value="${esc(info.name || "")}" placeholder="Спикер ${esc(label.replace(/\D/g, ""))}"
-            data-label="${esc(label)}" aria-label="Имя: ${esc(label)}" maxlength="80">
+          <input type="text" value="${esc(info.name || "")}" placeholder="${L("Speaker", "Спикер")} ${esc(label.replace(/\D/g, ""))}"
+            data-label="${esc(label)}" aria-label="${L("Name", "Имя")}: ${esc(label)}" maxlength="80">
           <span class="share">${Math.round((100 * (info.seconds || 0)) / total)}%</span>
           ${info.role ? `<div class="role">${esc(info.role)}</div>` : ""}
         </div>`,
       )
       .join("")}</div>${
       doc.speaker_merges?.length
-        ? `<p class="muted" style="margin:8px 0 0;font-size:12.5px">Объединены (одинаковое имя): ${esc(
+        ? `<p class="muted" style="margin:8px 0 0;font-size:12.5px">${L("Merged (same name)", "Объединены (одинаковое имя)")}: ${esc(
             doc.speaker_merges.map((m) => `${m.from} → ${m.into}`).join(", "),
           )}</p>`
         : ""
@@ -255,7 +259,7 @@ function renderSide() {
   }
   const chapters = doc.summary?.chapters || [];
   if (chapters.length) {
-    html += `<div class="panel"><h3>Главы</h3><ol class="chapters">${chapters
+    html += `<div class="panel"><h3>${L("Chapters", "Главы")}</h3><ol class="chapters">${chapters
       .map(
         (c, i) => `<li data-t="${c.start}" data-ci="${i}">
           <span class="ts">${fmtTs(c.start, hours())}</span>
@@ -268,7 +272,7 @@ function renderSide() {
   const description = (doc.video.description || "").trim();
   if (links.length || description) {
     const rel = 'target="_blank" rel="noopener noreferrer nofollow"';
-    html += `<div class="panel"><h3>Ссылки из описания</h3>${
+    html += `<div class="panel"><h3>${L("Links from the description", "Ссылки из описания")}</h3>${
       links.length
         ? `<ul class="links">${links
             .map(
@@ -276,8 +280,8 @@ function renderSide() {
                 <span class="host">${esc(hostOf(l.url))}</span></li>`,
             )
             .join("")}</ul>`
-        : `<p class="muted" style="margin:0;font-size:13.5px">В описании нет ссылок.</p>`
-    }${description ? `<details class="desc"><summary>Всё описание</summary><div>${linkify(description, rel)}</div></details>` : ""}</div>`;
+        : `<p class="muted" style="margin:0;font-size:13.5px">${L("No links in the description.", "В описании нет ссылок.")}</p>`
+    }${description ? `<details class="desc"><summary>${L("Full description", "Всё описание")}</summary><div>${linkify(description, rel)}</div></details>` : ""}</div>`;
   }
   $("#side-panels").innerHTML = html;
 }
@@ -313,14 +317,14 @@ function linkify(text, rel) {
 function renderTabs() {
   const text = cur.tab === "text";
   $("#tabs").innerHTML = `
-    <button class="tab${text ? "" : " on"}" data-tab="summary">Пересказ</button>
-    <button class="tab${text ? " on" : ""}" data-tab="text">Текст</button>
+    <button class="tab${text ? "" : " on"}" data-tab="summary">${L("Summary", "Пересказ")}</button>
+    <button class="tab${text ? " on" : ""}" data-tab="text">${L("Text", "Текст")}</button>
     <span class="spacer"></span>
     ${
       text
         ? `<span class="count" id="count"></span>
-           <input type="search" id="q" placeholder="Поиск по тексту" value="${esc(cur.query)}" aria-label="Поиск по тексту">
-           <button class="ghost${cur.follow ? " on" : ""}" data-act="follow" title="Прокручивать текст вслед за видео">${icons.follow}Следить</button>`
+           <input type="search" id="q" placeholder="${L("Search the text", "Поиск по тексту")}" value="${esc(cur.query)}" aria-label="${L("Search the text", "Поиск по тексту")}">
+           <button class="ghost${cur.follow ? " on" : ""}" data-act="follow" title="${L("Scroll the text along with the video", "Прокручивать текст вслед за видео")}">${icons.follow}${L("Follow", "Следить")}</button>`
         : ""
     }`;
 }
@@ -361,8 +365,8 @@ function renderText() {
     if (s.screen) {
       prev = null; // после надписи снова показываем, кто говорит
       rows.push(`<div class="seg-row screen-row">
-        <button class="ts" data-t="${s.start}" title="Перейти к моменту">${fmtTs(s.start, H)}</button>
-        <div><span class="who screen-label">На экране</span><span class="text">${highlight(s.text, q)}</span></div>
+        <button class="ts" data-t="${s.start}" title="${L("Jump to this moment", "Перейти к моменту")}">${fmtTs(s.start, H)}</button>
+        <div><span class="who screen-label">${L("On screen", "На экране")}</span><span class="text">${highlight(s.text, q)}</span></div>
       </div>`);
       return;
     }
@@ -372,22 +376,22 @@ function renderText() {
       : "";
     prev = s.speaker;
     rows.push(`<div class="seg-row" data-i="${i}">
-      <button class="ts" data-t="${s.start}" title="Перейти к моменту">${fmtTs(s.start, H)}</button>
+      <button class="ts" data-t="${s.start}" title="${L("Jump to this moment", "Перейти к моменту")}">${fmtTs(s.start, H)}</button>
       <div>${who}<span class="text">${highlight(s.text, q)}</span></div>
     </div>`);
   });
   $("#tab-body").innerHTML = rows.length
     ? `<div class="transcript">${rows.join("")}</div>`
-    : `<p class="muted">${q ? "Ничего не найдено." : "В видео не найдено ни речи, ни надписей."}</p>`;
+    : `<p class="muted">${q ? L("Nothing found.", "Ничего не найдено.") : L("No speech or on-screen text found in the video.", "В видео не найдено ни речи, ни надписей.")}</p>`;
   const count = $("#count");
-  if (count) count.textContent = q ? `${rows.length} ${plural(rows.length, ["реплика", "реплики", "реплик"])}` : "";
+  if (count) count.textContent = q ? `${rows.length} ${plural(rows.length, ["match", "matches"], ["реплика", "реплики", "реплик"])}` : "";
   cur.nowIdx = -1;
 }
 
 function redo(primary) {
   return `<span style="display:inline-flex;gap:6px;align-items:center">
-    <select id="redo-model" aria-label="Модель для пересказа" style="width:auto;padding:5px 8px;font-size:13px">${modelOptionsHtml(models, preferredModel)}</select>
-    <button class="${primary ? "primary" : "ghost"}" data-act="summarize">${primary ? "Сделать пересказ" : "Пересказать заново"}</button>
+    <select id="redo-model" aria-label="${L("Summary model", "Модель для пересказа")}" style="width:auto;padding:5px 8px;font-size:13px">${modelOptionsHtml(models, preferredModel)}</select>
+    <button class="${primary ? "primary" : "ghost"}" data-act="summarize">${primary ? L("Make a summary", "Сделать пересказ") : L("Summarize again", "Пересказать заново")}</button>
   </span>`;
 }
 
@@ -398,22 +402,22 @@ function renderSummary() {
   if (job.status === "summarizing") {
     body.innerHTML = `<div class="summary-empty">
       <div class="bar indeterminate" style="width:260px"><i></i></div>
-      <p>${esc(job.message || "Claude пишет пересказ…")}</p></div>`;
+      <p>${esc(job.message || L("Writing the summary…", "Пишу пересказ…"))}</p></div>`;
     return;
   }
   if (!s) {
-    body.innerHTML = `<div class="summary-empty"><p>${esc(doc.summary_error || "Пересказ ещё не сделан.")}</p>${redo(true)}</div>`;
+    body.innerHTML = `<div class="summary-empty"><p>${esc(doc.summary_error || L("No summary yet.", "Пересказ ещё не сделан."))}</p>${redo(true)}</div>`;
     return;
   }
   const title = models[s.model]?.title || s.model;
   const tokens = (s.usage?.input_tokens || 0) + (s.usage?.output_tokens || 0);
   const cost =
-    s.cost_usd != null ? ` · $${s.cost_usd.toFixed(3)}` : tokens ? ` · ${Math.round(tokens / 1000)} тыс. токенов` : "";
-  const time = doc.timings?.summary ? ` · ${Math.round(doc.timings.summary)} с` : "";
+    s.cost_usd != null ? ` · $${s.cost_usd.toFixed(3)}` : tokens ? ` · ${Math.round(tokens / 1000)}${L("K tokens", " тыс. токенов")}` : "";
+  const time = doc.timings?.summary ? ` · ${Math.round(doc.timings.summary)} ${L("s", "с")}` : "";
   body.innerHTML = `<div class="summary">
     <div class="tldr">${esc(s.tldr)}</div>
     <div class="prose">${md(s.summary)}</div>
-    ${s.key_points?.length ? `<h3>Главное</h3><ul>${s.key_points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
+    ${s.key_points?.length ? `<h3>${L("Key points", "Главное")}</h3><ul>${s.key_points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
     <div class="foot"><span>${esc(title)}${cost}${time}</span>${redo(false)}</div>
   </div>`;
 }
@@ -434,7 +438,7 @@ function loadYouTubeApi() {
       script.src = "https://www.youtube.com/iframe_api";
       script.onerror = () => {
         ytApi = null;
-        reject(new Error("YouTube API недоступен"));
+        reject(new Error("YouTube API unavailable"));
       };
       document.head.append(script);
     });
@@ -448,7 +452,7 @@ function playerFallback() {
   const v = cur.doc.video;
   cur.player = null;
   el.innerHTML = `<a class="player-fallback" href="${esc(v.url)}" target="_blank" rel="noopener"
-    style="background-image:linear-gradient(rgb(0 0 0/45%),rgb(0 0 0/45%)),url('${esc(v.thumbnail || "")}')">Открыть на YouTube</a>`;
+    style="background-image:linear-gradient(rgb(0 0 0/45%),rgb(0 0 0/45%)),url('${esc(v.thumbnail || "")}')">${L("Open on YouTube", "Открыть на YouTube")}</a>`;
 }
 
 async function mountPlayer() {
@@ -518,7 +522,7 @@ function plainText() {
   return timeline()
     .map((s) =>
       s.screen
-        ? `[${fmtTs(s.start, H)}] [на экране]\n${s.text}`
+        ? `[${fmtTs(s.start, H)}] [${L("on screen", "на экране")}]\n${s.text}`
         : `[${fmtTs(s.start, H)}]${s.speaker ? ` ${speakerName(s.speaker)}:` : ""} ${s.text}`,
     )
     .join("\n\n");
@@ -529,13 +533,13 @@ async function act(name) {
   try {
     if (name === "copy") {
       await navigator.clipboard.writeText(plainText());
-      toast("Текст скопирован");
+      toast(L("Text copied", "Текст скопирован"));
     } else if (name === "refresh-meta") {
       const btn = $("[data-act=refresh-meta]");
       if (btn) btn.disabled = true;
       cur.doc.video = await api(`/api/videos/${encodeURIComponent(cur.doc.video.id)}/refresh`, { method: "POST" });
       renderHead();
-      toast("Данные с YouTube обновлены");
+      toast(L("YouTube data updated", "Данные с YouTube обновлены"));
     } else if (name === "follow") {
       cur.follow = !cur.follow;
       $("[data-act=follow]")?.classList.toggle("on", cur.follow);
@@ -570,12 +574,12 @@ root().addEventListener("change", async (e) => {
     });
     if (res.merged?.length) {
       await refreshDoc(); // реплики перешли к другой метке — перечитываем расшифровку целиком
-      toast(`Объединено: ${res.merged.map(([from, into]) => `${from} → ${into}`).join(", ")} — одинаковое имя`);
+      toast(L("Merged (same name): ", "Объединено (одинаковое имя): ") + res.merged.map(([from, into]) => `${from} → ${into}`).join(", "));
       return;
     }
     cur.doc.speakers = res.speakers;
     if (cur.tab === "text") renderText();
-    toast("Имя сохранено");
+    toast(L("Name saved", "Имя сохранено"));
   } catch (err) {
     toast(err.message);
   }

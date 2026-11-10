@@ -58,7 +58,7 @@ def _batches(chunks: list[Chunk], max_items: int, max_seconds: float) -> Iterato
 
 class GigaAMEngine:
     id = "gigaam"
-    title = "GigaAM v3 e2e (Сбер)"
+    title = "GigaAM v3 e2e (Sber)"
     model_name = "v3_e2e_rnnt"
     languages = ("ru",)
 

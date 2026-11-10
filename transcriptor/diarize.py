@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 from . import config
+from .i18n import L
 from .media import SAMPLE_RATE
 
 log = logging.getLogger(__name__)
@@ -48,31 +49,36 @@ class Diarizer:
     def __init__(self, device: str = "cuda"):
         token = config.hf_token()
         if not token:
-            raise DiarizationUnavailable(
-                "Спикеры не определены: в файле .env нет HF_TOKEN (бесплатный токен Hugging Face)."
-            )
+            raise DiarizationUnavailable(L(
+                "Speakers were not labeled: there is no HF_TOKEN in the .env file (a free Hugging Face token).",
+                "Спикеры не определены: в файле .env нет HF_TOKEN (бесплатный токен Hugging Face).",
+            ))
         from pyannote.audio import Pipeline
 
+        url = f"https://huggingface.co/{MODEL_REPO}"
         try:
             pipeline = Pipeline.from_pretrained(MODEL_REPO, token=token)
         except Exception as exc:  # noqa: BLE001 — pyannote/HF поднимают разные исключения
             log.warning("pyannote load failed: %s", exc)
             text = str(exc).lower()
             if "gated repo" in text or "authorized list" in text:
-                raise DiarizationUnavailable(
-                    "Спикеры не определены: токен Hugging Face рабочий, но условия модели не приняты. Откройте "
-                    f"https://huggingface.co/{MODEL_REPO} под тем же аккаунтом и нажмите «Agree and access repository»."
-                ) from exc
+                raise DiarizationUnavailable(L(
+                    f"Speakers were not labeled: the Hugging Face token works, but the model terms are not accepted. "
+                    f"Open {url} with the same account and click “Agree and access repository”.",
+                    f"Спикеры не определены: токен Hugging Face рабочий, но условия модели не приняты. Откройте "
+                    f"{url} под тем же аккаунтом и нажмите «Agree and access repository».",
+                )) from exc
             if "401" in text or "invalid" in text and "token" in text:
-                raise DiarizationUnavailable(
-                    "Спикеры не определены: Hugging Face не принял HF_TOKEN. Создайте новый токен типа Read."
-                ) from exc
+                raise DiarizationUnavailable(L(
+                    "Speakers were not labeled: Hugging Face rejected HF_TOKEN. Create a new token of type Read.",
+                    "Спикеры не определены: Hugging Face не принял HF_TOKEN. Создайте новый токен типа Read.",
+                )) from exc
             pipeline = None
         if pipeline is None:
-            raise DiarizationUnavailable(
-                "Спикеры не определены: нет доступа к модели pyannote. Проверьте HF_TOKEN и примите условия "
-                f"на https://huggingface.co/{MODEL_REPO}"
-            )
+            raise DiarizationUnavailable(L(
+                f"Speakers were not labeled: no access to the pyannote model. Check HF_TOKEN and accept the terms at {url}",
+                f"Спикеры не определены: нет доступа к модели pyannote. Проверьте HF_TOKEN и примите условия на {url}",
+            ))
         self.pipeline = pipeline.to(torch.device(device))
 
     def __call__(

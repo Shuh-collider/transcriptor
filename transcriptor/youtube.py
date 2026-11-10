@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 import yt_dlp
 
 from . import config
+from .i18n import L
 from .media import ffmpeg_exe
 
 log = logging.getLogger(__name__)
@@ -87,7 +88,7 @@ def _ipv6_works() -> bool:
         except OSError:
             ok = False
         if not ok and (_ipv6_checked is None or _ipv6_checked[1]):
-            log.info("YouTube не отвечает по IPv6, скачиваю через IPv4")
+            log.info("YouTube is unreachable over IPv6, using IPv4")
         _ipv6_checked = (time.monotonic(), ok)
         return ok
 
@@ -150,20 +151,23 @@ def friendly_error(exc: Exception) -> str:
     text = str(exc)
     low = text.lower()
     if "confirm you" in low and "bot" in low:
-        return (
+        return L(
+            "YouTube asks to confirm you are not a bot. Put the browser where you are signed in to YouTube "
+            "into .env: YTDLP_COOKIES_FROM_BROWSER=firefox (or chrome, edge).",
             "YouTube просит подтвердить, что вы не бот. Укажите в .env браузер, где вы вошли в YouTube: "
-            "YTDLP_COOKIES_FROM_BROWSER=firefox (или chrome, edge)."
+            "YTDLP_COOKIES_FROM_BROWSER=firefox (или chrome, edge).",
         )
     if "private video" in low:
-        return "Это приватное видео, оно недоступно для скачивания."
+        return L("This is a private video; it cannot be downloaded.", "Это приватное видео, оно недоступно для скачивания.")
     if "sign in to confirm your age" in low or "age-restricted" in low:
-        return "Видео с возрастным ограничением: укажите YTDLP_COOKIES_FROM_BROWSER в .env."
+        return L("Age-restricted video: set YTDLP_COOKIES_FROM_BROWSER in .env.",
+                 "Видео с возрастным ограничением: укажите YTDLP_COOKIES_FROM_BROWSER в .env.")
     if "members-only" in low or "join this channel" in low:
-        return "Видео только для спонсоров канала."
+        return L("This video is for channel members only.", "Видео только для спонсоров канала.")
     if "is not a valid url" in low or "unsupported url" in low:
-        return "Не похоже на ссылку YouTube."
+        return L("This does not look like a YouTube link.", "Не похоже на ссылку YouTube.")
     if "live event will begin" in low or "premieres in" in low:
-        return "Трансляция ещё не началась."
+        return L("The live stream has not started yet.", "Трансляция ещё не началась.")
     return re.sub(r"^ERROR:\s*", "", text).strip()[:400]
 
 
@@ -185,7 +189,7 @@ def expand(url: str, limit: int = 300) -> Expanded:
     if info.get("_type") not in ("playlist", "multi_video"):
         ref = _ref(info)
         if ref is None:
-            raise DownloadError("Видео недоступно.")
+            raise DownloadError(L("The video is unavailable.", "Видео недоступно."))
         ref.thumbnail = _thumbnail(info)
         return Expanded("video", ref.title, [ref])
 
@@ -257,7 +261,7 @@ def _download(
         except yt_dlp.utils.DownloadError as exc:
             if "403" not in str(exc) or i == len(attempts) - 1:
                 raise DownloadError(friendly_error(exc)) from exc
-            log.warning("YouTube ответил 403, повторяю загрузку через IPv4")
+            log.warning("YouTube answered 403, retrying the download over IPv4")
             for part in dest.glob(f"{stem}.*"):
                 if part.suffix != ".json":  # video.json — метаданные, а не недокачанный файл
                     part.unlink(missing_ok=True)
@@ -266,7 +270,7 @@ def _download(
     if not path.exists():
         found = [p for p in dest.glob(f"{stem}.*") if p.suffix not in (".part", ".ytdl", ".json")]
         if not found:
-            raise DownloadError("yt-dlp не сохранил файл.")
+            raise DownloadError(L("yt-dlp did not save the file.", "yt-dlp не сохранил файл."))
         path = found[0]
     return path, info
 

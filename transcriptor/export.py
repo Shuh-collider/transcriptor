@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from .i18n import L, plural
+
 
 def fmt_ts(seconds: float, hours: bool | None = None) -> str:
     """0:05, 12:34 или 1:02:03."""
@@ -27,36 +29,30 @@ def parse_ts(text: str) -> float | None:
 
 
 def fmt_date(value: str | None) -> str:
-    """'20120317' или '2026-09-28T02:10:00' → '17.03.2012'."""
+    """'20120317' или '2026-09-28T02:10:00' → '2012-03-17' (по-русски '17.03.2012')."""
     digits = re.sub(r"\D", "", str(value or ""))[:8]
-    return f"{digits[6:8]}.{digits[4:6]}.{digits[:4]}" if len(digits) == 8 else ""
-
-
-def plural_ru(n: int, one: str, few: str, many: str) -> str:
-    n = abs(n) % 100
-    if 10 < n < 20:
-        return many
-    n %= 10
-    return one if n == 1 else few if 1 < n < 5 else many
+    if len(digits) != 8:
+        return ""
+    return L(f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}", f"{digits[6:8]}.{digits[4:6]}.{digits[:4]}")
 
 
 def fmt_count(n: int) -> str:
-    return f"{n:,}".replace(",", " ")
+    return L(f"{n:,}", f"{n:,}".replace(",", "\u00a0"))
 
 
 def video_stats(video: dict) -> str:
-    """'загружено 17.03.2012 · 82 169 просмотров · 761 лайк (на 28.09.2026)'."""
+    """'uploaded 2012-03-17 · 82,169 views · 761 likes (as of 2026-09-28)'."""
     parts = []
     if video.get("upload_date"):
-        parts.append(f"загружено {fmt_date(video['upload_date'])}")
+        parts.append(L("uploaded ", "загружено ") + fmt_date(video["upload_date"]))
     views, likes = video.get("view_count"), video.get("like_count")
     if views is not None:
-        parts.append(f"{fmt_count(views)} {plural_ru(views, 'просмотр', 'просмотра', 'просмотров')}")
+        parts.append(f"{fmt_count(views)} {plural(views, ('view', 'views'), ('просмотр', 'просмотра', 'просмотров'))}")
     if likes is not None:
-        parts.append(f"{fmt_count(likes)} {plural_ru(likes, 'лайк', 'лайка', 'лайков')}")
+        parts.append(f"{fmt_count(likes)} {plural(likes, ('like', 'likes'), ('лайк', 'лайка', 'лайков'))}")
     text = " · ".join(parts)
     if views is not None and video.get("stats_at"):
-        text += f" (на {fmt_date(video['stats_at'])})"
+        text += L(" (as of ", " (на ") + fmt_date(video["stats_at"]) + ")"
     return text
 
 
@@ -104,7 +100,7 @@ def speaker_name(doc: dict, label: str | None) -> str:
     if not label:
         return ""
     info = (doc.get("speakers") or {}).get(label) or {}
-    return info.get("name") or f"Спикер {label.lstrip('S')}"
+    return info.get("name") or L("Speaker ", "Спикер ") + label.lstrip("S")
 
 
 def timeline(doc: dict) -> list[dict]:
@@ -127,18 +123,18 @@ def to_txt(doc: dict) -> str:
     lines.append("")
     summary = doc.get("summary")
     if summary:
-        lines += ["КРАТКО", summary["tldr"], "", "ПЕРЕСКАЗ", summary["summary"], ""]
+        lines += [L("IN SHORT", "КРАТКО"), summary["tldr"], "", L("SUMMARY", "ПЕРЕСКАЗ"), summary["summary"], ""]
         if summary.get("key_points"):
-            lines += ["ГЛАВНОЕ"] + [f"• {p}" for p in summary["key_points"]] + [""]
+            lines += [L("KEY POINTS", "ГЛАВНОЕ")] + [f"• {p}" for p in summary["key_points"]] + [""]
         if summary.get("chapters"):
-            lines += ["ГЛАВЫ"] + [f"{fmt_ts(c['start'], hours)} {c['title']}" for c in summary["chapters"]] + [""]
+            lines += [L("CHAPTERS", "ГЛАВЫ")] + [f"{fmt_ts(c['start'], hours)} {c['title']}" for c in summary["chapters"]] + [""]
     links = description_links(video.get("description"))
     if links:
-        lines += ["ССЫЛКИ ИЗ ОПИСАНИЯ"] + [f"• {l['label']}: {l['url']}" if l["label"] else f"• {l['url']}" for l in links] + [""]
+        lines += [L("LINKS FROM THE DESCRIPTION", "ССЫЛКИ ИЗ ОПИСАНИЯ")] + [f"• {l['label']}: {l['url']}" if l["label"] else f"• {l['url']}" for l in links] + [""]
     if summary or links:
-        lines += ["РАСШИФРОВКА", ""]
+        lines += [L("TRANSCRIPT", "РАСШИФРОВКА"), ""]
     for seg in timeline(doc):
-        who = "[на экране]" if seg.get("screen") else speaker_name(doc, seg.get("speaker"))
+        who = L("[on screen]", "[на экране]") if seg.get("screen") else speaker_name(doc, seg.get("speaker"))
         head = f"[{fmt_ts(seg['start'], hours)}]" + (f" {who}" if seg.get("screen") else f" {who}:" if who else "")
         lines += [f"{head} {seg['text']}", ""]
     return "\n".join(lines).strip() + "\n"
@@ -148,29 +144,29 @@ def to_markdown(doc: dict) -> str:
     video = doc.get("video") or {}
     hours = _long(doc)
     url = video.get("url") or ""
-    out = [f"# {video.get('title') or 'Расшифровка'}", ""]
+    out = ["# " + (video.get("title") or L("Transcript", "Расшифровка")), ""]
     meta = [x for x in (video.get("channel"), fmt_ts(video.get("duration") or 0, hours), video_stats(video), url) if x]
     out += [" · ".join(meta), ""]
     summary = doc.get("summary")
     if summary:
-        out += ["## Кратко", "", summary["tldr"], "", "## Пересказ", "", summary["summary"], ""]
+        out += [L("## In short", "## Кратко"), "", summary["tldr"], "", L("## Summary", "## Пересказ"), "", summary["summary"], ""]
         if summary.get("key_points"):
-            out += ["## Главное", ""] + [f"- {p}" for p in summary["key_points"]] + [""]
+            out += [L("## Key points", "## Главное"), ""] + [f"- {p}" for p in summary["key_points"]] + [""]
         if summary.get("chapters"):
-            out += ["## Главы", ""]
+            out += [L("## Chapters", "## Главы"), ""]
             for c in summary["chapters"]:
                 link = f"{url}&t={int(c['start'])}s" if "watch?v=" in url else url
                 out.append(f"- [{fmt_ts(c['start'], hours)}]({link}) **{c['title']}** — {c['summary']}")
             out.append("")
     links = description_links(video.get("description"))
     if links:
-        out += ["## Ссылки из описания", ""]
+        out += [L("## Links from the description", "## Ссылки из описания"), ""]
         out += [f"- [{l['label'] or l['url']}]({l['url']})" for l in links] + [""]
-    out += ["## Расшифровка", ""]
+    out += [L("## Transcript", "## Расшифровка"), ""]
     for seg in timeline(doc):
         if seg.get("screen"):
             quoted = "\n".join(f"> {line}" if line.strip() else ">" for line in seg["text"].splitlines())
-            out += [f"**[{fmt_ts(seg['start'], hours)}] На экране:**", "", quoted, ""]
+            out += [f"**[{fmt_ts(seg['start'], hours)}] " + L("On screen:**", "На экране:**"), "", quoted, ""]
             continue
         who = speaker_name(doc, seg.get("speaker"))
         head = f"**[{fmt_ts(seg['start'], hours)}]" + (f" {who}:**" if who else "**")

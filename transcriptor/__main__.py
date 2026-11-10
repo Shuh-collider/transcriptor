@@ -17,6 +17,7 @@ import warnings
 import webbrowser
 
 from . import config
+from .i18n import L
 
 
 def _setup_logging() -> None:
@@ -51,19 +52,19 @@ def serve(host: str, port: int, open_browser: bool) -> None:
     url = f"http://{host}:{port}"
     state = _port_state(host, port)
     if state == "ours":
-        print(f"\n  Транскриптор уже запущен: {url}\n", flush=True)
+        print("\n  " + L("Transcriptor is already running: ", "Транскриптор уже запущен: ") + url + "\n", flush=True)
         if open_browser:
             webbrowser.open(url)
         return
     if state == "busy":
-        print(f"\n  Порт {port} занят другой программой. Запустите на другом: start.bat --port 8001\n", flush=True)
+        print("\n  " + L(f"Port {port} is used by another program. Start on another one: start.bat --port 8001", f"Порт {port} занят другой программой. Запустите на другом: start.bat --port 8001") + "\n", flush=True)
         return
     # MCP внутри веб-сервера ходит в его же API и не должен пытаться запустить второй сервер
     os.environ["TRANSCRIPTOR_URL"] = url
     os.environ["TRANSCRIPTOR_MCP_AUTOSTART"] = "0"
     if open_browser:
         threading.Timer(2.0, lambda: webbrowser.open(url)).start()
-    print(f"\n  Транскриптор запущен: {url}\n  MCP для LLM: {url}/mcp\n  Остановить: Ctrl+C\n", flush=True)
+    print(L(f"\n  Transcriptor is running: {url}\n  MCP for LLMs: {url}/mcp\n  Stop: Ctrl+C\n", f"\n  Транскриптор запущен: {url}\n  MCP для LLM: {url}/mcp\n  Остановить: Ctrl+C\n"), flush=True)
     uvicorn.run("transcriptor.server:app", host=host, port=port, log_level="warning")
 
 
@@ -107,48 +108,48 @@ def run_cli(args: argparse.Namespace) -> int:
                 print(f"\n✗ {exc}")
                 failures += 1
                 continue
-            print(f"\r  Расшифровано за {time.time() - started:.0f} с: {len(doc['segments'])} реплик, "
-                  f"язык {doc['language']}, {doc['engine']}" + " " * 10)
+            print("\r  " + L(f"Transcribed in {time.time() - started:.0f} s: {len(doc['segments'])} segments, ", f"Расшифровано за {time.time() - started:.0f} с: {len(doc['segments'])} реплик, ")
+                  + L("language ", "язык ") + f"{doc['language']}, {doc['engine']}" + " " * 10)
             for note in doc["notes"]:
                 print(f"  ! {note}")
             if doc.get("screen"):
-                print(f"  Надписей на экране: {len(doc['screen'])}")
+                print("  " + L("On-screen text items: ", "Надписей на экране: ") + str(len(doc["screen"])))
             if options.summarize and (doc["segments"] or doc.get("screen")):
                 try:
                     doc = summarize_video(v.id, options.summary_model, options.summary_language,
                                           lambda msg: print(f"\r  {msg:<60}", end="", flush=True))
                     cost = doc["summary"].get("cost_usd")
-                    print(f"\r  Пересказ готов ({doc['summary']['model']}" + (f", ${cost:.3f}" if cost else "") + ")" + " " * 30)
+                    print("\r  " + L("Summary ready", "Пересказ готов") + f" ({doc['summary']['model']}" + (f", ${cost:.3f}" if cost else "") + ")" + " " * 30)
                 except SummaryError as exc:
                     print(f"\r  ! {exc}" + " " * 30)
             folder = video_dir(v.id)
             (folder / "transcript.md").write_text(to_markdown(doc), encoding="utf-8")
             (folder / "transcript.txt").write_text(to_txt(doc), encoding="utf-8")
-            print(f"  Файлы: {folder}")
+            print("  " + L("Files: ", "Файлы: ") + str(folder))
     return 1 if failures else 0
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="transcriptor", description="Расшифровка видео с YouTube")
+    parser = argparse.ArgumentParser(prog="transcriptor", description="Transcribe YouTube videos")
     sub = parser.add_subparsers(dest="cmd")
 
-    p_serve = sub.add_parser("serve", help="веб-интерфейс (по умолчанию)")
+    p_serve = sub.add_parser("serve", help="web interface (default)")
     p_serve.add_argument("--host", default=config.HOST)
     p_serve.add_argument("--port", type=int, default=config.PORT)
-    p_serve.add_argument("--no-browser", action="store_true", help="не открывать браузер")
+    p_serve.add_argument("--no-browser", action="store_true", help="do not open the browser")
 
-    p_run = sub.add_parser("run", help="расшифровать ссылки в консоли")
-    p_run.add_argument("urls", nargs="+", help="ссылки на видео, плейлисты или каналы")
+    p_run = sub.add_parser("run", help="transcribe links in the console")
+    p_run.add_argument("urls", nargs="+", help="links to videos, playlists or channels")
     p_run.add_argument("--lang", default="auto", choices=["auto", "ru", "en"])
-    p_run.add_argument("--engine", default="gigaam", choices=["gigaam", "qwen"], help="движок для русского")
-    p_run.add_argument("--speakers", type=int, help="точное число спикеров, если известно")
-    p_run.add_argument("--no-speakers", action="store_true", help="не определять спикеров")
-    p_run.add_argument("--no-summary", action="store_true", help="без пересказа")
+    p_run.add_argument("--engine", default="gigaam", choices=["gigaam", "qwen"], help="engine for Russian")
+    p_run.add_argument("--speakers", type=int, help="exact number of speakers, if known")
+    p_run.add_argument("--no-speakers", action="store_true", help="do not label speakers")
+    p_run.add_argument("--no-summary", action="store_true", help="no summary")
     p_run.add_argument("--model", default=config.default_summary_model(), choices=list(config.SUMMARY_MODELS))
-    p_run.add_argument("--summary-lang", default="ru", choices=["ru", "en", "same"])
-    p_run.add_argument("--screen", action="store_true", help="читать надписи на экране (через Gemini)")
+    p_run.add_argument("--summary-lang", default="same", choices=["same", "en", "ru"], help="summary language; same = language of the video")
+    p_run.add_argument("--screen", action="store_true", help="read on-screen text (with Gemini)")
 
-    sub.add_parser("mcp", help="MCP-сервер для LLM через stdio (Claude Desktop, Claude Code, Cursor…)")
+    sub.add_parser("mcp", help="MCP server for LLMs over stdio (Claude Desktop, Claude Code, Cursor…)")
 
     args = parser.parse_args()
     config.prepare_runtime()

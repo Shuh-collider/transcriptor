@@ -21,6 +21,7 @@ from .asr import GigaAMEngine, QwenEngine
 from .diarize import TITLE as DIARIZATION_TITLE
 from .diarize import DiarizationUnavailable, Diarizer
 from .media import SAMPLE_RATE, load_audio
+from .i18n import L
 from .merge import build_segments, speaker_stats
 from .screen import ScreenCancelled, ScreenError, read_screen
 from .summarize import summarize
@@ -47,7 +48,7 @@ class Options:
     num_speakers: int | None = None
     summarize: bool = True
     summary_model: str = field(default_factory=config.default_summary_model)
-    summary_language: str = "ru"  # ru | en | same
+    summary_language: str = "same"  # same | en | ru
     screen_text: bool = False  # читать надписи на экране (через Gemini)
 
     @classmethod
@@ -61,7 +62,8 @@ class Options:
             opts.ru_engine = "gigaam"
         if opts.summary_model not in config.SUMMARY_MODELS:
             opts.summary_model = config.default_summary_model()
-        if opts.summary_language not in ("ru", "en", "same"):
+        
+
             opts.summary_language = "ru"
         try:
             opts.num_speakers = int(opts.num_speakers) if opts.num_speakers else None
@@ -134,7 +136,7 @@ def _free_gpu_cache() -> None:
 
 def video_dir(video_id: str) -> Path:
     if not VIDEO_ID.match(video_id or ""):
-        raise ValueError(f"Некорректный id видео: {video_id!r}")
+        raise ValueError(f"Invalid video id: {video_id!r}")
     return config.VIDEOS_DIR / video_id
 
 
@@ -177,13 +179,13 @@ def transcribe_video(
     config.reload_env()  # ключи могли вписать в .env, пока сервер работал
 
     t = time.time()
-    audio_path, meta = download_audio(url, video_dir(video_id), stage("download", "Скачиваю звук с YouTube"))
+    audio_path, meta = download_audio(url, video_dir(video_id), stage("download", L("Downloading audio from YouTube", "Скачиваю звук с YouTube")))
     timings["download"] = round(time.time() - t, 1)
 
     # Надписи читаются в отдельном потоке, пока видеокарта распознаёт речь: там в основном
     # ожидание YouTube и Gemini.
     screen_task = None
-    screen_state = {"frac": 0.0, "message": "Читаю надписи на экране"}
+    screen_state = {"frac": 0.0, "message": L("Reading on-screen text", "Читаю надписи на экране")}
     if options.screen_text:
         t_screen = time.time()
         pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="screen")
@@ -195,7 +197,7 @@ def transcribe_video(
         pool.shutdown(wait=False)
 
     t = time.time()
-    update = stage("prepare", "Ищу фрагменты речи")
+    update = stage("prepare", L("Finding speech", "Ищу фрагменты речи"))
     audio = load_audio(audio_path)
     meta["duration"] = meta.get("duration") or round(len(audio) / SAMPLE_RATE, 1)
     chunks = speech_chunks(audio, progress=update)
@@ -204,7 +206,7 @@ def transcribe_video(
     language = options.language
     if language == "auto" and chunks:
         t = time.time()
-        stage("language", "Определяю язык")
+        stage("language", L("Detecting the language", "Определяю язык"))
         language = models.qwen().detect_language(audio, chunks)
         timings["language"] = round(time.time() - t, 1)
         if language is None:
@@ -215,9 +217,9 @@ def transcribe_video(
 
     engine = models.gigaam() if language == "ru" and options.ru_engine == "gigaam" else models.qwen()
     if language not in engine.languages:
-        notes.append(f"Язык «{language}» не поддерживается, распознаю с автоопределением.")
+        notes.append(L(f"Language “{language}” is not supported; recognizing with auto-detection.", f"Язык «{language}» не поддерживается, распознаю с автоопределением."))
     t = time.time()
-    update = stage("asr", f"Распознаю речь: {engine.title}")
+    update = stage("asr", L("Recognizing speech: ", "Распознаю речь: ") + engine.title)
     chunk_texts = engine.transcribe(
         audio, chunks, language=language if language in engine.languages else None, progress=update
     )
@@ -229,7 +231,7 @@ def transcribe_video(
     embed = None
     if options.diarize and chunks:
         t = time.time()
-        update = stage("diarize", "Определяю, кто говорит")
+        update = stage("diarize", L("Finding who is speaking", "Определяю, кто говорит"))
         try:
             diarizer = models.diarizer()
             turns = diarizer(audio, num_speakers=options.num_speakers, progress=update)
@@ -244,7 +246,7 @@ def transcribe_video(
     segments = build_segments(chunk_texts, turns, embed)
     _free_gpu_cache()
     if not segments:
-        notes.append("В видео не найдено речи.")
+        notes.append(L("No speech found in the video.", "В видео не найдено речи."))
 
     screen = None
     if screen_task:
@@ -261,7 +263,7 @@ def transcribe_video(
             notes.append(str(exc))
         except Exception as exc:  # noqa: BLE001 — без надписей расшифровка всё равно полезна
             log.exception("screen text failed")
-            notes.append(f"Надписи на экране не прочитаны: {type(exc).__name__}: {exc}")
+            notes.append(L("On-screen text was not read: ", "Надписи на экране не прочитаны: ") + f"{type(exc).__name__}: {exc}")
         timings["screen"] = round(time.time() - t_screen, 1)
     stats = speaker_stats(segments)
     old = load_doc(video_id) or {}
@@ -355,10 +357,10 @@ def summarize_video(video_id: str, model: str, language: str, progress: Callable
     """Делает пересказ для уже расшифрованного видео и дописывает его в transcript.json."""
     doc = load_doc(video_id)
     if doc is None:
-        raise FileNotFoundError("Расшифровка не найдена.")
+        raise FileNotFoundError(L("Transcript not found.", "Расшифровка не найдена."))
     out_language = doc.get("language") if language == "same" else language
     t = time.time()
-    summary = summarize(doc, model, out_language if out_language in ("ru", "en") else "ru", progress)
+    summary = summarize(doc, model, out_language if out_language in ("ru", "en") else L("en", "ru"), progress)
     doc = load_doc(video_id) or doc  # имена спикеров могли поменять, пока шёл запрос
     doc["summary"] = summary
     doc["summary_error"] = None

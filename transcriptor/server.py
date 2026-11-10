@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, config, library
+from . import __version__, config, i18n, library
 from .export import description_links, to_markdown, to_txt
 from .jobs import JobManager
 from .mcp_server import mcp
@@ -63,7 +63,7 @@ def _asset_version() -> str:
 
 
 ASSET_VERSION = _asset_version()
-app = FastAPI(title="Транскриптор", version=__version__, lifespan=lifespan)
+app = FastAPI(title="Transcriptor", version=__version__, lifespan=lifespan)
 app.mount(f"/static/{ASSET_VERSION}", _RevalidatedStatic(directory=WEB_DIR), name="static")
 
 
@@ -72,7 +72,22 @@ def index() -> HTMLResponse:
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     # относительные import в модулях тоже получат версию в пути
     html = html.replace('"/static/', f'"/static/{ASSET_VERSION}/')
+    # язык нужен до загрузки скриптов, чтобы страница не мигала другим языком
+    saved = "1" if i18n.is_saved() else "0"
+    html = html.replace('<html lang="en">', f'<html lang="{i18n.language()}" data-lang-saved="{saved}">', 1)
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+class SettingsIn(BaseModel):
+    language: str
+
+
+@app.put("/api/settings")
+def put_settings(body: SettingsIn) -> dict:
+    try:
+        return {"language": i18n.set_language(body.language)}
+    except ValueError as exc:
+        raise HTTPException(400, "language must be 'en' or 'ru'") from exc
 
 
 @app.get("/api/status")
@@ -82,11 +97,13 @@ def status() -> dict:
     providers = config.providers()
     return {
         "version": __version__,
+        "language": i18n.language(),
         "gpu": gpu,
         "hf_token": bool(config.hf_token()),
         "providers": providers,
         "summary_models": {
-            model_id: {**info, "available": providers[info["provider"]]}
+            model_id: {**info, "title": i18n.L(info["title"], info.get("title_ru", info["title"])),
+                       "available": providers[info["provider"]]}
             for model_id, info in config.SUMMARY_MODELS.items()
         },
         "default_summary_model": config.default_summary_model(),
@@ -127,7 +144,7 @@ class SubmitIn(BaseModel):
 @app.post("/api/jobs")
 def submit(body: SubmitIn) -> list[dict]:
     if not body.videos:
-        raise HTTPException(400, "Список видео пуст.")
+        raise HTTPException(400, i18n.L("The list of videos is empty.", "Список видео пуст."))
     for v in body.videos:
         video_dir(v.id)  # проверка id
     return manager.submit([v.model_dump() for v in body.videos], body.options, body.batch_title)
@@ -140,7 +157,7 @@ def jobs() -> list[dict]:
 
 def _job_or_404(job: dict | None) -> dict:
     if not job:
-        raise HTTPException(404, "Задание не найдено.")
+        raise HTTPException(404, i18n.L("Job not found.", "Задание не найдено."))
     return job
 
 
@@ -172,7 +189,7 @@ def resummarize(job_id: str, body: SummarizeIn) -> dict:
 @app.delete("/api/jobs/{job_id}")
 def delete(job_id: str) -> dict:
     if not manager.delete(job_id):
-        raise HTTPException(404, "Задание не найдено.")
+        raise HTTPException(404, i18n.L("Job not found.", "Задание не найдено."))
     return {"ok": True}
 
 
@@ -192,7 +209,7 @@ def _doc_or_404(video_id: str) -> dict:
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     if doc is None:
-        raise HTTPException(404, "Расшифровка не найдена.")
+        raise HTTPException(404, i18n.L("Transcript not found.", "Расшифровка не найдена."))
     return doc
 
 
@@ -242,7 +259,7 @@ def export(video_id: str, fmt: str) -> Response:
     elif fmt == "json":
         body, media = json.dumps(doc, ensure_ascii=False, indent=1), "application/json; charset=utf-8"
     else:
-        raise HTTPException(404, "Формат не поддерживается.")
+        raise HTTPException(404, i18n.L("Unsupported format.", "Формат не поддерживается."))
     name = _filename(doc, fmt)
     return Response(
         body,
